@@ -1,0 +1,73 @@
+ESP32 VOICE-CONTROLLED GPS WAYPOINT DRONE - EXPENDITURE
+Project: ESP32 Voice Controlled Drone with LiteWing + GPS Waypoint Navigation
+Note: Prices in INR (Indian rupees), from Indian online stores (Feb/Mar 2026 check).
+Wait: GPS purchase to be confirmed AFTER firmware decision (stock vs Betaflight).
+
+============================================================
+A. MUST-HAVE (On the drone + ground)
+============================================================
+No.  Item                                  Qty  Store (example)            Price (INR)
+---  ------------------------------------  ---  --------------------------  ----------
+1    LiteWing ESP32-S3 drone board (w/     1    QuartzComponents           3,290
+     battery)                                  Robocraze                  3,599
+                                               Tomson Electronics         3,999
+2    TBS M10N MINI GPS (u-blox M10)        1    FpvGuru                    1,545
+                                               Indian Robo Store          2,299
+3    BMP280 barometer                      1    Robu.in                       27
+4    5V active buzzer                      1    Thinking Robot                20
+5    Spare 1S 3.7V 650mAh LiPo battery     2    Dsm Online                   299
+                                               ElectroPi                    335
+6    GPS mast/bracket (3D-printed or       1    DIY / local                   200
+     carbon rod + mounting tape)
+
+------------------------------------------------------------
+     MUST-HAVE SUBTOTAL (approx, best price)              ~5,400
+     MUST-HAVE SUBTOTAL (approx, typical price)           ~7,100
+============================================================
+
+============================================================
+B. OPTIONAL / SAFETY (recommended)
+============================================================
+No.  Item                                  Qty  Store (example)            Price (INR)
+---  ------------------------------------  ---  --------------------------  ----------
+7    Prop guards (set of 4, size to fit)   1    Robocraze                     409
+8    IMAX B6AC 80W LiPo balance charger    1    Indian Robo Store           2,375
+     (only needed if upgrading to bigger        Tomson                     2,599
+     batteries; LiteWing charges via USB-C
+     onboard TP4056)
+9    Manual RC controller + receiver       1    TBD - only if chosen
+     (backup control, essential for              firmware supports it
+     outdoor autonomous flight)
+
+============================================================
+C. ALREADY AVAILABLE ON LAPTOP (no cost)
+============================================================
+- Python + PyAudio + Vosk (free)
+- Microphone
+- Wi-Fi
+- USB-C cable
+
+============================================================
+D. TOTAL PROJECT COST
+============================================================
+     With must-have only:                       ~5,400 - 7,100
+     With must-have + prop guards:              ~5,800 - 7,500
+     With must-have + prop guards + charger:    ~8,200 - 10,100
+     (charger only if moving to 2S/3S batteries)
+     RC backup controller:                      + depending on choice
+
+============================================================
+E. NOT BUYING YET (per notes)
+============================================================
+- Separate ESP32 dev board          (LiteWing already has ESP32-S3)
+- Four separate ESCs                 (LiteWing has integrated motor drivers)
+- Four brushless motors + 5-inch frame (only for larger V2 build)
+- Expensive RTK GPS
+- Camera / LiDAR / Raspberry Pi
+
+Recommended purchase order:
+1. LiteWing drone (start flying manually)
+2. BMP280 + buzzer (cheap, bench testing)
+3. Decide firmware path FIRST
+4. Then buy GPS (M10N)
+5. Spare batteries + props

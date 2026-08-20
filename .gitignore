@@ -1,0 +1,21 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Map Tile Cache (dynamically downloaded)
+tile_cache/
+
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Logs & Temp
+*.log
+.system_generated/
+
+# OS specific
+Thumbs.db
+.DS_Store
