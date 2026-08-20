@@ -27,33 +27,11 @@ These terms appear throughout the codebase and this document. Read this once bef
 
 | Term | Definition |
 |------|-----------|
-| **6-DOF** | Six Degrees of Freedom — the drone can move in three translational directions (N/E/Up) and rotate in three angular directions (roll/pitch/yaw). Every rigid body in 3D space has exactly these 6. |
-| **GCS** | Ground Control Station — the software layer that accepts commands, manages missions, enforces failsafes, and passes targets to the flight controller. The human-facing brain of the system. |
 | **Quadrotor** | A rotorcraft with exactly four motors. Unlike a helicopter, it has no tail rotor — yaw is controlled by spinning two motors faster than the other two. |
 | **NED** | North–East–Down. The standard aerospace world-frame convention. This project uses NEU (North–East–Up) so that altitude is positive upward, which is more intuitive for simulation. |
-| **Body Frame** | A coordinate system fixed to the drone — it tilts and rotates with the vehicle. Motor forces live here. |
-| **World Frame** | A coordinate system fixed to the ground — it never moves. GPS positions, gravity, and wind live here. |
-| **Euler Angles** | Three angles (roll φ, pitch θ, yaw ψ) that describe how the body frame is rotated relative to the world frame. The standard way to represent orientation in aerospace. |
-| **Rotation Matrix (R)** | A 3×3 matrix that transforms any vector from body frame into world frame. Derived from the three Euler angles. Without it, you cannot add thrust and gravity (they live in different frames). |
-| **Euler Integration** | The simplest numerical integration: new = old + rate × dt. Used at 250 Hz to advance velocity and position each step. |
-| **dt** | Timestep — how much simulated time passes each physics step. Here dt = 0.004 seconds (250 Hz). |
 | **250 Hz** | The simulation runs the physics loop 250 times per second. This is fast enough to capture the drone's fastest dynamics without numerical instability. |
-| **Thrust** | The upward force produced by spinning propellers. Each motor produces up to 4.0 N; total hover thrust = mass × g = 1.0 × 9.81 = 9.81 N. |
-| **Torque (τ)** | A rotational force. Thrust imbalance between left and right motors produces roll torque; front-back imbalance produces pitch torque; reaction torques produce yaw torque. |
-| **Moment of Inertia (I)** | How hard it is to rotate the drone. I_roll = I_pitch = 0.012 kg·m². I_yaw = 0.02 kg·m² (harder to spin around the vertical axis because mass is spread wide). |
-| **Angular Rate (p, q, r)** | Body-frame angular velocities: p = roll rate, q = pitch rate, r = yaw rate (rad/s). These are what gyroscopes measure. |
-| **Hover Thrust** | The total thrust needed to stay still: T_hover = m × g = 9.81 N. Each of the 4 motors runs at 9.81/16 ≈ 61% throttle during steady hover. |
-| **Drag** | Aerodynamic resistance. Modelled as F_drag = −k_d × v. Coefficient k_d = 0.06 for both horizontal and vertical axes. |
 | **Motor Mixing** | The algebra that converts desired total thrust + three torques into four individual motor throttle commands. Inverts the torque equations. |
 | **Reaction Torque** | When a motor spins clockwise, Newton's 3rd law pushes the drone body counter-clockwise. CW and CCW motors are paired diagonally so their reactions cancel for pitch/roll but add for yaw. |
-| **PID** | Proportional–Integral–Derivative controller. Computes a corrective output from: current error (P), accumulated past error (I), and rate of error change (D). |
-| **Cascaded PID** | Multiple PID loops in series — outer loop output becomes inner loop setpoint. Position → velocity → attitude → angular rate → torques → motors. |
-| **Setpoint** | The target value a PID loop is trying to reach (e.g. target altitude, target position). |
-| **GPS** | Global Positioning System. The simulator fakes GPS by adding Gaussian noise to the true simulated position (σ ≈ 0.5 m horizontal, 0.8 m vertical). |
-| **Flat-Earth** | Approximation that treats the Earth as flat for small distances (<50 km). Converts GPS degrees to metres with: ΔN = Δlat × 111000, ΔE = Δlon × 111000. |
-| **Haversine** | The exact spherical-Earth formula for distance between two GPS coordinates. Used for telemetry reporting. The flat-Earth formula is used inside the controller for speed. |
-| **Waypoint** | A named 3D target position: (name, north_metres, east_metres, altitude_metres). The mission is an ordered list of waypoints. |
-| **RTH** | Return To Home — fly back to the launch point (0, 0) at a safe altitude, then land. Triggered manually or by a failsafe. |
 | **Geofence** | A maximum allowed distance from home (100 m). If the drone exceeds this, the GCS forces an RTH regardless of the current mission. |
 | **Orbit Mode** | The drone circles a Point of Interest at a fixed radius. Each step, the angular position around the POI advances by ω × dt rad, and the nose always points at the centre. |
 | **Vosk** | An offline speech recognition library. Processes raw microphone audio (16000 Hz, mono, 16-bit) and outputs text — no internet required. |
