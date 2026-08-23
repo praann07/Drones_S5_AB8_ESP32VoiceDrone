@@ -1,4 +1,5 @@
 import math
+import os
 
 MASS = 1.0
 G = 9.81
@@ -84,3 +85,9 @@ TURBULENCE_INTENSITY = 0.6
 
 GEOFENCE_DEFAULT_RADIUS = 160.0
 GEOFENCE_MAX_ALT = 35.0
+
+# SINDy boundary flight / sonification
+SINDY_BOUNDARY_THRESHOLD = 1.0
+SONIFICATION_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "telemetry_logs")
+SONIFICATION_POINTS_PER_STEP = 40
+SONIFICATION_SAMPLE_RATE = 8000
