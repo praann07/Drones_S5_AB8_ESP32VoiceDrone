@@ -13,6 +13,16 @@
 
 ---
 
+### Related work — newer attempts (see the branch selector above)
+
+This `main` branch is our original ESP32-based attempt. Since then, two
+further attempts were built as separate branches of this same repo:
+
+- **[`drone_mujoco`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_mujoco)** — a MuJoCo-based voice-controlled quadrotor with a SINDy-identified data-driven attitude controller (full pipeline: excitation → identification → validation → cascaded control → live voice demo).
+- **[`drone_gazebo`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_gazebo)** — a PX4 + Gazebo voice-controlled quadrotor, also using SINDy/DMDc identification.
+
+---
+
 
 
 # ESP32 Autonomous Drone Simulator
