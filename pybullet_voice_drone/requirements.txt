@@ -1,0 +1,4 @@
+pybullet>=3.2.5
+SpeechRecognition>=3.10.0
+PyAudio>=0.2.14
+typing_extensions>=4.0.0

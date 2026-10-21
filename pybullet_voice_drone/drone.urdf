@@ -1,0 +1,350 @@
+<?xml version="1.0"?>
+<!--
+  Voice-controlled quadcopter, visual-only model (generated; edit freely).
+
+  The whole drone is ONE multibody (fixed links + 4 continuous propeller joints),
+  so a single resetBasePositionAndOrientation() call moves every part at once.
+  This avoids the tearing / "disappearing parts" seen when a drone is assembled
+  from many separate bodies that are repositioned one by one.
+
+  Frame: +X = nose (red marker), +Y = left, +Z = up. Origin = body centre.
+  Lowest point is the bottom of the landing skids (z = -0.30).
+  Motors sit at (+-0.72, +-0.72); propeller tips reach 1.32 m from the origin.
+
+  Every differently coloured part is its own link: PyBullet's OpenGL renderer draws a whole
+  link in a single colour.
+
+  Links that drone_core.py recolours at run time:
+    light_fl/fr/rl/rr  navigation lights (red left, green right, white rear)
+    disc_fl/fr/rl/rr   translucent rotor discs, opacity follows rotor speed
+-->
+<robot name="voice_drone">
+
+    <material name="body_dark"><color rgba="0.10 0.10 0.12 1"/></material>
+    <material name="top_blue"><color rgba="0.05 0.22 0.70 1"/></material>
+    <material name="nose_red"><color rgba="0.90 0.08 0.08 1"/></material>
+    <material name="carbon"><color rgba="0.06 0.06 0.07 1"/></material>
+    <material name="gear_grey"><color rgba="0.20 0.20 0.23 1"/></material>
+    <material name="accent_blue"><color rgba="0.10 0.45 0.95 1"/></material>
+    <material name="white"><color rgba="0.92 0.93 0.95 1"/></material>
+    <material name="gimbal"><color rgba="0.04 0.04 0.05 1"/></material>
+    <material name="lens"><color rgba="0.15 0.35 0.65 1"/></material>
+    <material name="blade_light"><color rgba="0.85 0.85 0.85 1"/></material>
+    <material name="blade_grey"><color rgba="0.65 0.65 0.65 1"/></material>
+    <material name="rotor_disc"><color rgba="0.85 0.90 0.95 0.0"/></material>
+    <material name="light_red"><color rgba="0.35 0.02 0.02 1"/></material>
+    <material name="light_green"><color rgba="0.02 0.30 0.05 1"/></material>
+    <material name="light_white"><color rgba="0.35 0.35 0.35 1"/></material>
+
+    <!-- body -->
+    <link name="base_link">
+        <inertial><origin xyz="0 0 0"/><mass value="1.0"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><box size="0.84 0.60 0.18"/></geometry><material name="body_dark"/></visual>
+    </link>
+    <link name="top_plate">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><box size="0.56 0.40 0.07"/></geometry><material name="top_blue"/></visual>
+    </link>
+    <joint name="top_plate_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="top_plate"/>
+        <origin xyz="0 0 0.13"/>
+        
+    </joint>
+    <link name="gps_puck">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><cylinder radius="0.07" length="0.03"/></geometry><material name="white"/></visual>
+    </link>
+    <joint name="gps_puck_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="gps_puck"/>
+        <origin xyz="-0.12 0 0.18"/>
+        
+    </joint>
+    <link name="front_marker">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><box size="0.26 0.11 0.10"/></geometry><material name="nose_red"/></visual>
+    </link>
+    <joint name="front_marker_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="front_marker"/>
+        <origin xyz="0.45 0 0.10"/>
+        
+    </joint>
+
+    <!-- X frame -->
+    <link name="arm_a">
+        <inertial><origin xyz="0 0 0"/><mass value="0.02"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><box size="2.036 0.07 0.07"/></geometry><material name="carbon"/></visual>
+    </link>
+    <joint name="arm_a_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="arm_a"/>
+        <origin xyz="0 0 0" rpy="0 0 0.785398"/>
+        
+    </joint>
+    <link name="arm_b">
+        <inertial><origin xyz="0 0 0"/><mass value="0.02"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><box size="2.036 0.07 0.07"/></geometry><material name="carbon"/></visual>
+    </link>
+    <joint name="arm_b_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="arm_b"/>
+        <origin xyz="0 0 0" rpy="0 0 -0.785398"/>
+        
+    </joint>
+
+    <!-- landing gear: lowest point is z = -0.30 -->
+    <link name="landing_gear">
+        <inertial><origin xyz="0 0 0"/><mass value="0.05"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0.36 -0.28"/><geometry><box size="0.74 0.04 0.04"/></geometry><material name="gear_grey"/></visual>
+        <visual><origin xyz="0 -0.36 -0.28"/><geometry><box size="0.74 0.04 0.04"/></geometry><material name="gear_grey"/></visual>
+        <visual><origin xyz="0.30 0.36 -0.17"/><geometry><box size="0.04 0.04 0.24"/></geometry><material name="gear_grey"/></visual>
+        <visual><origin xyz="0.30 -0.36 -0.17"/><geometry><box size="0.04 0.04 0.24"/></geometry><material name="gear_grey"/></visual>
+        <visual><origin xyz="-0.30 0.36 -0.17"/><geometry><box size="0.04 0.04 0.24"/></geometry><material name="gear_grey"/></visual>
+        <visual><origin xyz="-0.30 -0.36 -0.17"/><geometry><box size="0.04 0.04 0.24"/></geometry><material name="gear_grey"/></visual>
+        <visual><origin xyz="0.30 0 -0.075"/><geometry><box size="0.04 0.76 0.03"/></geometry><material name="gear_grey"/></visual>
+        <visual><origin xyz="-0.30 0 -0.075"/><geometry><box size="0.04 0.76 0.03"/></geometry><material name="gear_grey"/></visual>
+    </link>
+    <joint name="landing_gear_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="landing_gear"/>
+        <origin xyz="0 0 0"/>
+        
+    </joint>
+
+    <!-- camera gimbal under the nose -->
+    <link name="camera_gimbal">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><sphere radius="0.085"/></geometry><material name="gimbal"/></visual>
+    </link>
+    <joint name="camera_gimbal_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="camera_gimbal"/>
+        <origin xyz="0.30 0 -0.14"/>
+        
+    </joint>
+    <link name="camera_lens">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><sphere radius="0.04"/></geometry><material name="lens"/></visual>
+    </link>
+    <joint name="camera_lens_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="camera_lens"/>
+        <origin xyz="0.375 0 -0.14"/>
+        
+    </joint>
+
+    <!-- front-left corner -->
+    <link name="motor_fl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.05"/><inertia ixx="1e-4" ixy="0" ixz="0" iyy="1e-4" iyz="0" izz="1e-4"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><cylinder radius="0.1" length="0.1"/></geometry><material name="carbon"/></visual>
+    </link>
+    <joint name="motor_fl_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="motor_fl"/>
+        <origin xyz="0.72 0.72 0.10"/>
+        
+    </joint>
+    <link name="ring_fl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><cylinder radius="0.108" length="0.02"/></geometry><material name="accent_blue"/></visual>
+    </link>
+    <joint name="ring_fl_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="ring_fl"/>
+        <origin xyz="0.72 0.72 0.12"/>
+        
+    </joint>
+    <link name="prop_fl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><box size="0.60 0.036 0.016"/></geometry><material name="blade_light"/></visual>
+        <visual><origin xyz="0 0 0.005"/><geometry><box size="0.036 0.60 0.016"/></geometry><material name="blade_grey"/></visual>
+    </link>
+    <joint name="prop_fl_joint" type="continuous">
+        <parent link="base_link"/>
+        <child link="prop_fl"/>
+        <origin xyz="0.72 0.72 0.18"/>
+        <axis xyz="0 0 1"/>
+    </joint>
+    <link name="disc_fl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0.012"/><geometry><cylinder radius="0.31" length="0.004"/></geometry><material name="rotor_disc"/></visual>
+    </link>
+    <joint name="disc_fl_joint" type="fixed">
+        <parent link="prop_fl"/>
+        <child link="disc_fl"/>
+        <origin xyz="0 0 0"/>
+        
+    </joint>
+    <link name="light_fl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><sphere radius="0.045"/></geometry><material name="light_red"/></visual>
+    </link>
+    <joint name="light_fl_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="light_fl"/>
+        <origin xyz="0.72 0.84 0.10"/>
+        
+    </joint>
+
+    <!-- front-right corner -->
+    <link name="motor_fr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.05"/><inertia ixx="1e-4" ixy="0" ixz="0" iyy="1e-4" iyz="0" izz="1e-4"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><cylinder radius="0.1" length="0.1"/></geometry><material name="carbon"/></visual>
+    </link>
+    <joint name="motor_fr_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="motor_fr"/>
+        <origin xyz="0.72 -0.72 0.10"/>
+        
+    </joint>
+    <link name="ring_fr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><cylinder radius="0.108" length="0.02"/></geometry><material name="accent_blue"/></visual>
+    </link>
+    <joint name="ring_fr_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="ring_fr"/>
+        <origin xyz="0.72 -0.72 0.12"/>
+        
+    </joint>
+    <link name="prop_fr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><box size="0.60 0.036 0.016"/></geometry><material name="blade_light"/></visual>
+        <visual><origin xyz="0 0 0.005"/><geometry><box size="0.036 0.60 0.016"/></geometry><material name="blade_grey"/></visual>
+    </link>
+    <joint name="prop_fr_joint" type="continuous">
+        <parent link="base_link"/>
+        <child link="prop_fr"/>
+        <origin xyz="0.72 -0.72 0.18"/>
+        <axis xyz="0 0 1"/>
+    </joint>
+    <link name="disc_fr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0.012"/><geometry><cylinder radius="0.31" length="0.004"/></geometry><material name="rotor_disc"/></visual>
+    </link>
+    <joint name="disc_fr_joint" type="fixed">
+        <parent link="prop_fr"/>
+        <child link="disc_fr"/>
+        <origin xyz="0 0 0"/>
+        
+    </joint>
+    <link name="light_fr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><sphere radius="0.045"/></geometry><material name="light_green"/></visual>
+    </link>
+    <joint name="light_fr_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="light_fr"/>
+        <origin xyz="0.72 -0.84 0.10"/>
+        
+    </joint>
+
+    <!-- rear-left corner -->
+    <link name="motor_rl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.05"/><inertia ixx="1e-4" ixy="0" ixz="0" iyy="1e-4" iyz="0" izz="1e-4"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><cylinder radius="0.1" length="0.1"/></geometry><material name="carbon"/></visual>
+    </link>
+    <joint name="motor_rl_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="motor_rl"/>
+        <origin xyz="-0.72 0.72 0.10"/>
+        
+    </joint>
+    <link name="ring_rl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><cylinder radius="0.108" length="0.02"/></geometry><material name="accent_blue"/></visual>
+    </link>
+    <joint name="ring_rl_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="ring_rl"/>
+        <origin xyz="-0.72 0.72 0.12"/>
+        
+    </joint>
+    <link name="prop_rl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><box size="0.60 0.036 0.016"/></geometry><material name="blade_light"/></visual>
+        <visual><origin xyz="0 0 0.005"/><geometry><box size="0.036 0.60 0.016"/></geometry><material name="blade_grey"/></visual>
+    </link>
+    <joint name="prop_rl_joint" type="continuous">
+        <parent link="base_link"/>
+        <child link="prop_rl"/>
+        <origin xyz="-0.72 0.72 0.18"/>
+        <axis xyz="0 0 1"/>
+    </joint>
+    <link name="disc_rl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0.012"/><geometry><cylinder radius="0.31" length="0.004"/></geometry><material name="rotor_disc"/></visual>
+    </link>
+    <joint name="disc_rl_joint" type="fixed">
+        <parent link="prop_rl"/>
+        <child link="disc_rl"/>
+        <origin xyz="0 0 0"/>
+        
+    </joint>
+    <link name="light_rl">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><sphere radius="0.045"/></geometry><material name="light_white"/></visual>
+    </link>
+    <joint name="light_rl_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="light_rl"/>
+        <origin xyz="-0.72 0.84 0.10"/>
+        
+    </joint>
+
+    <!-- rear-right corner -->
+    <link name="motor_rr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.05"/><inertia ixx="1e-4" ixy="0" ixz="0" iyy="1e-4" iyz="0" izz="1e-4"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><cylinder radius="0.1" length="0.1"/></geometry><material name="carbon"/></visual>
+    </link>
+    <joint name="motor_rr_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="motor_rr"/>
+        <origin xyz="-0.72 -0.72 0.10"/>
+        
+    </joint>
+    <link name="ring_rr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><cylinder radius="0.108" length="0.02"/></geometry><material name="accent_blue"/></visual>
+    </link>
+    <joint name="ring_rr_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="ring_rr"/>
+        <origin xyz="-0.72 -0.72 0.12"/>
+        
+    </joint>
+    <link name="prop_rr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><box size="0.60 0.036 0.016"/></geometry><material name="blade_light"/></visual>
+        <visual><origin xyz="0 0 0.005"/><geometry><box size="0.036 0.60 0.016"/></geometry><material name="blade_grey"/></visual>
+    </link>
+    <joint name="prop_rr_joint" type="continuous">
+        <parent link="base_link"/>
+        <child link="prop_rr"/>
+        <origin xyz="-0.72 -0.72 0.18"/>
+        <axis xyz="0 0 1"/>
+    </joint>
+    <link name="disc_rr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0.012"/><geometry><cylinder radius="0.31" length="0.004"/></geometry><material name="rotor_disc"/></visual>
+    </link>
+    <joint name="disc_rr_joint" type="fixed">
+        <parent link="prop_rr"/>
+        <child link="disc_rr"/>
+        <origin xyz="0 0 0"/>
+        
+    </joint>
+    <link name="light_rr">
+        <inertial><origin xyz="0 0 0"/><mass value="0.01"/><inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/></inertial>
+        <visual><origin xyz="0 0 0"/><geometry><sphere radius="0.045"/></geometry><material name="light_white"/></visual>
+    </link>
+    <joint name="light_rr_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="light_rr"/>
+        <origin xyz="-0.72 -0.84 0.10"/>
+        
+    </joint>
+
+</robot>

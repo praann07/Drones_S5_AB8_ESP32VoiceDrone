@@ -1,0 +1,21 @@
+# Python virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS / Editor generated
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/

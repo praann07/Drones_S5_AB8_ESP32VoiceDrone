@@ -1,0 +1,5 @@
+Time,Voice_Input,Command,Velocity_X,Velocity_Y,Velocity_Z,Drone_X,Drone_Y,Drone_Z,Yaw
+17:46:42,take off,TAKE OFF,0,0,1.0,0.0,0.0,0.5,0.0
+17:46:55,go right,RIGHT,0,-1.5,0,0.0,-0.01,4.3,0.0
+17:47:08,go left,LEFT,0,1.5,0,0.0,-11.99,4.3,0.0
+17:47:20,land,LAND,0,0,-1.0,0.0,4.16,4.29,0.0
