@@ -71,8 +71,8 @@ def run_all() -> pd.DataFrame:
     if not fitted["gate_passed"]:
         raise RuntimeError("Stage B gate not passed - refusing to build Stage D on it.")
     sindy = fitted["sindy"]
-    A_sindy, _ = linearize_sindy_at_hover(sindy)
-    Kq, Komega = gains_from_identified_model(A_sindy)
+    A_sindy, B_sindy = linearize_sindy_at_hover(sindy)
+    Kq, Komega = gains_from_identified_model(A_sindy, B_sindy[3:6])
     print(f"Gains derived from identified model: Kq={Kq}, Komega={Komega}")
     controller = QuaternionController(Kq, Komega)
 

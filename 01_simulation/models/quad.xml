@@ -84,6 +84,23 @@
       <geom name="prop3" type="cylinder" pos=" 0.106066 -0.106066 0.012" size="0.06 0.002" rgba="0.2 0.2 0.9 0.45"/>
       <geom name="prop4" type="cylinder" pos="-0.106066  0.106066 0.012" size="0.06 0.002" rgba="0.2 0.2 0.9 0.45"/>
 
+      <!-- Landing gear. The legs are visual; the four feet and the hull box
+           are the drone's only collision geoms (contype=1, conaffinity=0:
+           they collide with the floor and city geoms, which set
+           conaffinity=1, and never with each other). The body's explicit
+           <inertial> above means none of these change mass or inertia, and
+           quad.xml on its own has nothing to touch, so the identification
+           runs (which load quad.xml) are unaffected. -->
+      <geom name="leg1" type="capsule" fromto=" 0.04  0.04 -0.015  0.07  0.07 -0.06" size="0.004" rgba="0.3 0.3 0.33 1"/>
+      <geom name="leg2" type="capsule" fromto="-0.04 -0.04 -0.015 -0.07 -0.07 -0.06" size="0.004" rgba="0.3 0.3 0.33 1"/>
+      <geom name="leg3" type="capsule" fromto=" 0.04 -0.04 -0.015  0.07 -0.07 -0.06" size="0.004" rgba="0.3 0.3 0.33 1"/>
+      <geom name="leg4" type="capsule" fromto="-0.04  0.04 -0.015 -0.07  0.07 -0.06" size="0.004" rgba="0.3 0.3 0.33 1"/>
+      <geom name="foot1" type="sphere" pos=" 0.07  0.07 -0.06" size="0.01" rgba="0.15 0.15 0.15 1" contype="1"/>
+      <geom name="foot2" type="sphere" pos="-0.07 -0.07 -0.06" size="0.01" rgba="0.15 0.15 0.15 1" contype="1"/>
+      <geom name="foot3" type="sphere" pos=" 0.07 -0.07 -0.06" size="0.01" rgba="0.15 0.15 0.15 1" contype="1"/>
+      <geom name="foot4" type="sphere" pos="-0.07  0.07 -0.06" size="0.01" rgba="0.15 0.15 0.15 1" contype="1"/>
+      <geom name="hull" type="box" pos="0 0 0" size="0.17 0.17 0.025" group="3" rgba="1 1 1 0" contype="1"/>
+
       <site name="imu" pos="0 0 0" size="0.005"/>
 
       <!-- Chase camera, visualization-only (a camera has zero mass/DOF and
@@ -92,7 +109,7 @@
            whole body in scene.xml just to attach a camera to it). Used by
            render_offscreen.py and demo.py so the drone actually fills the
            frame instead of being a speck against a default far-away view. -->
-      <camera name="chase" pos="-1.4 -1.4 0.7" xyaxes="0.707 -0.707 0  0.24 0.24 0.94" mode="trackcom"/>
+      <camera name="chase" pos="-3.3 -3.3 2.4" xyaxes="0.707 -0.707 0  0.323 0.323 0.889" fovy="50" mode="trackcom"/>
       <!-- Bird's-eye/top-down view: directly above the drone, looking
            straight down (zaxis = cross(xaxis,yaxis) = +Z, camera looks
            along -zaxis = down). xaxis=world+X, yaxis=world+Y so the image

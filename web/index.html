@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AB8 Flight Deck</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: ground-station console. 3D airspace on the left with an instrument HUD,
+   command + experiment column on the right, live strip charts under the airspace. */
+:root {
+  --bg: #e9edf1;          /* instrument-panel grey, slightly blue */
+  --panel: #f7f9fb;
+  --ink: #17212b;         /* navy ink */
+  --muted: #5b6876;
+  --rule: #c9d2db;
+  --accent: #c2410c;      /* signal orange: the tower, warnings, the active command */
+  --sky: #cfdbe6;
+  --good: #1f7a4d;
+  --warn: #b7791f;
+  --bad: #b42318;
+  --c1: #c2410c; --c2: #2563a6; --c3: #6b7f2a; --c4: #7c4d9e;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151c; --panel: #161e27; --ink: #e3e9ef; --muted: #93a1b0; --rule: #2a3542;
+    --accent: #f08a4b; --sky: #1b2633; --good: #4cc38a; --warn: #e6b450; --bad: #f2766b;
+    --c1: #f08a4b; --c2: #6aa8e8; --c3: #b5c95a; --c4: #c39be0; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151c; --panel: #161e27; --ink: #e3e9ef; --muted: #93a1b0; --rule: #2a3542;
+  --accent: #f08a4b; --sky: #1b2633; --good: #4cc38a; --warn: #e6b450; --bad: #f2766b;
+  --c1: #f08a4b; --c2: #6aa8e8; --c3: #b5c95a; --c4: #c39be0; color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 24px;
+}
+* { box-sizing: border-box; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin-bottom: 12px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: 0.02em; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); max-width: 70ch; }
+.deck { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+@media (max-width: 920px) { .deck { grid-template-columns: minmax(0, 1fr); } }
+.left { display: grid; gap: 14px; min-width: 0; }
+.right { display: grid; gap: 14px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
+.label { font-family: var(--font-display); font-weight: 600; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.view { position: relative; aspect-ratio: 16 / 10; max-width: 100%; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--rule); background: var(--sky); }
+@media (max-width: 600px) { .view { aspect-ratio: 4 / 5; } }
+.view canvas { display: block; width: 100%; height: 100%; }
+.hud { position: absolute; left: 10px; top: 10px; display: grid; gap: 2px; font-family: var(--font-data); font-size: 12px;
+  background: color-mix(in srgb, var(--panel) 82%, transparent); border: 1px solid var(--rule); border-radius: 4px; padding: 8px 10px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.hud b { font-weight: 600; }
+.status { position: absolute; right: 10px; top: 10px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+.pill { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.06em; font-size: 13px; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 99px; border: 1px solid currentColor; background: var(--panel); }
+.pill.good { color: var(--good); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); } .pill.info { color: var(--muted); }
+.viewbar { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; }
+button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.pad button { font-family: var(--font-display); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-size: 16px; padding: 10px 4px; }
+.pad .fwd { grid-column: 2; } .pad .left { grid-column: 1; } .pad .right { grid-column: 3; } .pad .back { grid-column: 2; }
+.pad .stop { color: var(--bad); }
+.pad button.active { border-color: var(--accent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.say { display: flex; gap: 6px; margin-top: 10px; }
+.say input { flex: 1; min-width: 0; font: inherit; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 4px; background: var(--bg); color: var(--ink); }
+.heard { margin-top: 8px; font-family: var(--font-data); font-size: 12px; color: var(--muted); display: grid; gap: 2px; max-height: 92px; overflow: auto; }
+.heard .miss { color: var(--bad); }
+.row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; margin-top: 8px; }
+.row label { font-size: 13px; }
+.row output { font-family: var(--font-data); font-size: 12px; font-variant-numeric: tabular-nums; }
+.row input[type=range], .row select { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.row select { font: inherit; padding: 6px; border: 1px solid var(--rule); border-radius: 4px; background: var(--bg); color: var(--ink); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; font-size: 13px; }
+.presets { display: grid; gap: 6px; margin-top: 10px; }
+.presets button { text-align: left; font-size: 13px; }
+.note { color: var(--muted); font-size: 12.5px; line-height: 1.45; margin: 8px 0 0; }
+.charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .charts { grid-template-columns: minmax(0, 1fr); } }
+.chart canvas { width: 100%; height: 120px; display: block; }
+.chart .label { display: flex; justify-content: space-between; gap: 8px; }
+.chart .label span:last-child { font-family: var(--font-data); letter-spacing: 0; text-transform: none; color: var(--ink); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.fact { border-left: 2px solid var(--rule); padding-left: 10px; }
+.fact .v { font-family: var(--font-data); font-size: 15px; font-variant-numeric: tabular-nums; }
+.fact .k { color: var(--muted); font-size: 12px; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; font-family: var(--font-data); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; font-family: var(--font-body); }
+th { color: var(--muted); font-weight: 400; }
+.err { color: var(--bad); }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<header>
+  <h1>AB8 Flight Deck</h1>
+  <div class="sub">The project's voice-commanded quadrotor, flying in your browser: the same planner, position loop and quaternion attitude loop as the Python stack, with gains derived from the SINDy-identified model. It matches the MuJoCo run to 0.05&nbsp;mm.</div>
+</header>
+
+<div class="deck">
+  <div class="left">
+    <div class="view" id="view">
+      <div class="hud" id="hud">loading…</div>
+      <div class="status" id="status"></div>
+      <div class="viewbar">
+        <button id="camChase" class="on" type="button">Chase</button>
+        <button id="camTop" type="button">Top</button>
+        <button id="camFree" type="button">Orbit</button>
+        <button id="pause" type="button">Pause</button>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="panel chart"><div class="label"><span>Position error</span><span id="lp">–</span></div><canvas id="chPos"></canvas></div>
+      <div class="panel chart"><div class="label"><span>Attitude error</span><span id="la">–</span></div><canvas id="chAtt"></canvas></div>
+      <div class="panel chart"><div class="label"><span>Rotor thrust 0–6 N</span><span id="lu">–</span></div><canvas id="chU"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <p class="label">Identified model in use</p>
+      <div class="facts" id="facts"></div>
+      <p class="note" id="sindyNote"></p>
+    </div>
+
+    <div class="panel">
+      <p class="label">Inner-loop stability, sampled at the control rate</p>
+      <div class="tablewrap"><table id="stab"></table></div>
+      <p class="note">Computed from the identified model by <code>04_control/run_stability.py</code> and checked in MuJoCo. "Pre-fix" is the gain formula before 2026-10-20, which left out the identified 1/inertia factor and made every gain about 290 times too large. Try it in the experiment panel.</p>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="panel">
+      <p class="label">Command</p>
+      <div class="pad" id="pad">
+        <button class="up" data-cmd="up" type="button">Up</button>
+        <button class="fwd" data-cmd="forward" type="button">Forward</button>
+        <button class="down" data-cmd="down" type="button">Down</button>
+        <button class="left" data-cmd="left" type="button">Left</button>
+        <button data-cmd="hover" type="button">Hover</button>
+        <button class="right" data-cmd="right" type="button">Right</button>
+        <span></span>
+        <button class="back" data-cmd="back" type="button">Back</button>
+        <button class="stop" data-cmd="stop" type="button">Stop</button>
+      </div>
+      <form class="say" id="sayForm">
+        <input id="say" type="text" autocomplete="off" placeholder="Say it: “go straight”, “climb”, “go to 1 1 1.5”" aria-label="Spoken phrase">
+        <button id="mic" type="button" title="Browser speech recognition (Chrome/Edge send audio to their own speech service; the offline Vosk path is demo.py)">Mic</button>
+        <button type="submit">Send</button>
+      </form>
+      <div class="heard" id="heard"><div>Phrases go through the project's own classifier (synonyms, then fuzzy match).</div></div>
+    </div>
+
+    <div class="panel">
+      <p class="label">Experiment</p>
+      <div class="row"><label>Attitude gains</label>
+        <div class="seg" style="grid-column:1/-1"><button id="gFixed" class="on" type="button">Fixed (current)</button><button id="gOld" type="button">Pre-fix</button></div>
+      </div>
+      <div class="row"><label for="rate">Control rate</label><output id="rateOut"></output>
+        <select id="rate">
+          <option value="1">2000 Hz</option><option value="2">1000 Hz</option><option value="4" selected>500 Hz (as flown)</option>
+          <option value="5">400 Hz</option><option value="8">250 Hz</option><option value="20">100 Hz</option><option value="40">50 Hz</option>
+        </select>
+      </div>
+      <div class="row"><label for="noise">Gyro noise</label><output id="noiseOut"></output><input id="noise" type="range" min="0" max="2" step="0.01" value="0"></div>
+      <div class="row"><label for="wind">Wind from the west</label><output id="windOut"></output><input id="wind" type="range" min="0" max="3" step="0.05" value="0"></div>
+      <div class="row"><label for="payload">Mass and inertia, plant only</label><output id="payloadOut"></output><input id="payload" type="range" min="0.6" max="1.6" step="0.05" value="1"></div>
+      <div class="row"><label>Integral action + yaw-priority mixer</label>
+        <div class="seg" style="grid-column:1/-1"><button id="rOn" class="on" type="button">On</button><button id="rOff" type="button">Off (Stage D original)</button></div>
+      </div>
+      <div class="presets">
+        <button id="pBug" type="button">Show the bug: pre-fix gains at 400 Hz</button>
+        <button id="pNoise" type="button">Pre-fix gains vs 0.05 rad/s gyro noise</button>
+        <button id="pTour" type="button">Fly a tour: forward, left, climb, back, right</button>
+        <button id="pReset" type="button">Reset everything</button>
+      </div>
+      <p class="note">Wind, noise and payload act on the simulated drone only. The controller is never told about them.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script type="module">
+import { PARAMS as P } from "./params.js";
+import { Flight, classify, attitudeErrorDeg, qrot } from "./sim_core.js";
+
+const $ = (id) => document.getElementById(id);
+const PHYS_DT = 0.0005;   // 2 kHz physics so the control rate can be swept below 500 Hz
+const css = () => { const s = getComputedStyle(document.documentElement); const g = (n) => s.getPropertyValue(n).trim();
+  return { bg: g("--bg"), panel: g("--panel"), ink: g("--ink"), muted: g("--muted"), rule: g("--rule"), accent: g("--accent"),
+    sky: g("--sky"), good: g("--good"), warn: g("--warn"), bad: g("--bad"), c: [g("--c1"), g("--c2"), g("--c3"), g("--c4")] }; };
+let C = css();
+
+// ---------------------------------------------------------------- flight
+const state = { gains: "fixed", every: 4, noise: 0, wind: 0, payload: 1, robust: true };
+let F;
+function makeFlight() {
+  F = new Flight(P, { gains: state.gains, robust: state.robust, controlEvery: state.every, physicsDt: PHYS_DT,
+    gyroStd: state.noise, wind: [state.wind, 0, 0], payload: state.payload, seed: 7 });
+  hist.length = 0; trail.length = 0; activeCmd = "hover"; tour = null;
+}
+const hist = [];  // {t, ep, ea, u}
+const trail = [];
+let activeCmd = "hover", tour = null, paused = false;
+
+function dispatch(cmd, target = null, src = "button", phrase = null) {
+  if (F.diverged()) makeFlight();
+  const r = F.dispatch(cmd, target);
+  activeCmd = cmd;
+  document.querySelectorAll("#pad button").forEach((b) => b.classList.toggle("active", b.dataset.cmd === cmd));
+  log(phrase ? `“${phrase}” → ${cmd}${r.clamped ? " (stopped short of a building)" : ""}` : `${src}: ${cmd}${r.clamped ? " (stopped short of a building)" : ""}`);
+}
+function log(text, miss = false) {
+  const d = document.createElement("div"); d.textContent = text; if (miss) d.className = "miss";
+  const h = $("heard"); h.prepend(d); while (h.children.length > 12) h.lastChild.remove();
+}
+
+// ---------------------------------------------------------------- 3D scene
+const view = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 200);
+camera.up.set(0, 0, 1);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.85));
+const sun = new THREE.DirectionalLight(0xffffff, 0.65); sun.position.set(-6, -8, 14); scene.add(sun);
+
+const groundMat = new THREE.MeshLambertMaterial({ color: 0x9aa7a0 });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(26, 26), groundMat); scene.add(ground);
+const grid = new THREE.GridHelper(26, 26, 0x6b7a86, 0x6b7a86);
+grid.rotation.x = Math.PI / 2; grid.material.opacity = 0.25; grid.material.transparent = true; grid.position.z = 0.002; scene.add(grid);
+const roadMat = new THREE.MeshLambertMaterial({ color: 0x5d6670 });
+for (const [w, h] of [[26, 1.0], [1.0, 26]]) { const r = new THREE.Mesh(new THREE.PlaneGeometry(w, h), roadMat); r.position.z = 0.004; scene.add(r); }
+
+const rgb = (a) => new THREE.Color(a[0], a[1], a[2]);
+for (const o of P.city) {
+  const flat = o.kind === "park" || o.kind === "pad";
+  const g = o.kind === "tree" ? new THREE.ConeGeometry(o.half_x, o.height, 10) : new THREE.BoxGeometry(2 * o.half_x, 2 * o.half_y, flat ? 0.02 : o.height);
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: rgb(o.rgba) }));
+  if (o.kind === "tree") { m.rotation.x = Math.PI / 2; m.position.set(o.x, o.y, o.height / 2); }
+  else m.position.set(o.x, o.y, flat ? 0.012 : o.height / 2);
+  scene.add(m);
+}
+
+// Drone at 2x scale for visibility; rotor colours = spin pairs from mixer.py (+yaw reaction red, -yaw blue)
+const drone = new THREE.Group(); scene.add(drone);
+const S = 2.0, A = P.mixer.ARM;
+const bodyMat = new THREE.MeshStandardMaterial({ color: 0xdfe5ea, roughness: 0.35, metalness: 0.2 });
+const hub = new THREE.Mesh(new THREE.SphereGeometry(0.05 * S, 20, 12), bodyMat); hub.scale.set(1.3, 1, 0.55); drone.add(hub);
+const nose = new THREE.Mesh(new THREE.BoxGeometry(0.03 * S, 0.02 * S, 0.016 * S), new THREE.MeshStandardMaterial({ color: 0xe2681b })); nose.position.set(0.065 * S, 0, 0); drone.add(nose);
+const rotorPos = [[A, A], [-A, -A], [A, -A], [-A, A]];
+const rotorMeshes = rotorPos.map(([x, y], i) => {
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.006 * S, 0.006 * S, Math.hypot(x, y) * S, 8), bodyMat);
+  arm.position.set((x * S) / 2, (y * S) / 2, 0); arm.rotation.z = Math.atan2(y, x) - Math.PI / 2; drone.add(arm);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.05 * S, 0.05 * S, 0.004 * S, 24),
+    new THREE.MeshStandardMaterial({ color: i < 2 ? 0xd9473a : 0x3a6fd9, transparent: true, opacity: 0.75 }));
+  disc.rotation.x = Math.PI / 2; disc.position.set(x * S, y * S, 0.012 * S); drone.add(disc); return disc;
+});
+const targetRing = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.012, 8, 40), new THREE.MeshBasicMaterial({ color: 0xe2681b }));
+scene.add(targetRing);
+const refDot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 8), new THREE.MeshBasicMaterial({ color: 0x2563a6 })); scene.add(refDot);
+const trailGeo = new THREE.BufferGeometry(); const TRAIL_N = 1500;
+trailGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(TRAIL_N * 3), 3));
+const trailLine = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0x2563a6 })); scene.add(trailLine);
+
+let camMode = "chase";
+function setCam(m) {
+  camMode = m; ["camChase", "camTop", "camFree"].forEach((id) => $(id).classList.toggle("on", id === { chase: "camChase", top: "camTop", free: "camFree" }[m]));
+  controls.enabled = m === "free";
+  if (m === "free") { camera.position.set(F.p[0] - 4, F.p[1] - 5, F.p[2] + 3.5); controls.target.set(...F.p); }
+}
+$("camChase").onclick = () => setCam("chase"); $("camTop").onclick = () => setCam("top"); $("camFree").onclick = () => setCam("free");
+
+function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(view);
+
+function themeScene() {
+  C = css();
+  scene.background = new THREE.Color(C.sky);
+  scene.fog = new THREE.Fog(new THREE.Color(C.sky), 14, 32);
+}
+themeScene();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", themeScene);
+new MutationObserver(themeScene).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+// ---------------------------------------------------------------- charts
+const charts = [["chPos", 1], ["chAtt", 1], ["chU", 4]].map(([id]) => $(id));
+function drawChart(cv, series, ymax, colors, unitTicks) {
+  const r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 2);
+  if (cv.width !== Math.round(r.width * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+  const g = cv.getContext("2d"), W = cv.width, H = cv.height, pad = 4 * dpr, left = 30 * dpr;
+  g.clearRect(0, 0, W, H);
+  g.font = `${10 * dpr}px ${getComputedStyle(document.body).getPropertyValue("--font-data") || "monospace"}`;
+  g.strokeStyle = C.rule; g.fillStyle = C.muted; g.lineWidth = 1;
+  for (const v of unitTicks) { const y = H - pad - (v / ymax) * (H - 2 * pad); g.beginPath(); g.moveTo(left, y); g.lineTo(W, y); g.stroke(); g.fillText(String(v), 2 * dpr, y + 3 * dpr); }
+  if (!hist.length) return;
+  const t1 = hist[hist.length - 1].t, t0 = t1 - 10;
+  series.forEach((get, k) => {
+    g.strokeStyle = colors[k]; g.lineWidth = 1.6 * dpr; g.beginPath();
+    hist.forEach((h, i) => { const x = left + ((h.t - t0) / 10) * (W - left - pad); const y = H - pad - (Math.min(get(h), ymax) / ymax) * (H - 2 * pad); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.stroke();
+  });
+}
+
+// ---------------------------------------------------------------- panels
+function facts() {
+  const id = P.identified, I = P.INERTIA;
+  const items = [
+    ["Identified inertia, roll", `${(id.inertia_from_b[0] * 1e3).toFixed(3)} g·m²`, `true ${(I[0] * 1e3).toFixed(3)}`],
+    ["Identified inertia, yaw", `${(id.inertia_from_b[2] * 1e3).toFixed(3)} g·m²`, `true ${(I[2] * 1e3).toFixed(3)}`],
+    ["Identified rotational drag", `${(-id.a[0]).toFixed(3)} 1/s`, `true ${(P.C_ROT / I[0]).toFixed(3)}`],
+    ["Attitude gain Kq (roll)", `${P.gains.Kq[0].toFixed(3)} N·m`, `pre-fix ${P.gains_asbuilt.Kq[0].toFixed(1)}`],
+    ["Rate gain Kω (roll)", `${P.gains.Komega[0].toFixed(4)} N·m·s`, `pre-fix ${P.gains_asbuilt.Komega[0].toFixed(3)}`],
+    ["Design target", `${P.gains.settling_s} s, ζ ${P.gains.zeta}`, "2% settling, per axis"],
+  ];
+  $("facts").innerHTML = items.map(([k, v, s]) => `<div class="fact"><div class="k">${k}</div><div class="v">${v}</div><div class="k">${s}</div></div>`).join("");
+  const row = id.sindy_rows.omega_x_dot.map(([n, c]) => `${c >= 0 ? "+" : "−"} ${Math.abs(c).toFixed(3)}·${n === "1" ? "1" : n}`).join(" ");
+  $("sindyNote").textContent = `SINDy, ω̇x row (${id.n_active_terms} active terms of ${id.n_library_terms} in the whole model): ω̇x = ${row.replace(/^\+ /, "")}`;
+}
+function stabTable() {
+  const s = P.stability, ax = ["roll", "pitch", "yaw"], f = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : "–");
+  const rows = [["Gains", "Axis", "Min stable rate", "…with 1-sample delay", "Gain margin at 500 Hz", "…with delay"]];
+  for (const g of ["fixed", "legacy"]) for (const a of ax) {
+    const r = s[g][a];
+    rows.push([g === "fixed" ? "Fixed" : "Pre-fix", a, `${f(r.min_rate_hz, 0)} Hz`, `${f(r.min_rate_hz_delay, 0)} Hz`, `${f(r.gain_margin_500Hz, 2)}×`,
+      `<span class="${r.gain_margin_500Hz_delay < 1 ? "err" : ""}">${f(r.gain_margin_500Hz_delay, 2)}×</span>`]);
+  }
+  $("stab").innerHTML = rows.map((r, i) => `<tr>${r.map((c, j) => (i ? `<td>${c}</td>` : `<th>${c}</th>`)).join("")}</tr>`).join("");
+}
+
+// ---------------------------------------------------------------- controls
+document.querySelectorAll("#pad button").forEach((b) => (b.onclick = () => dispatch(b.dataset.cmd)));
+$("sayForm").onsubmit = (e) => { e.preventDefault(); handlePhrase($("say").value); $("say").value = ""; };
+function handlePhrase(text) {
+  if (!text.trim()) return;
+  const m = text.toLowerCase().match(/go\s*to\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)/);
+  if (m) { dispatch("goto", [+m[1], +m[2], +m[3]], "say", text); return; }
+  const cmd = classify(P, text);
+  if (cmd) dispatch(cmd, null, "say", text); else log(`“${text}” → not recognised`, true);
+}
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+$("mic").onclick = () => {
+  if (!SR) { log("This browser has no speech recognition. Type the phrase instead.", true); return; }
+  try {
+    const rec = new SR(); rec.lang = "en-US"; rec.interimResults = false;
+    rec.onresult = (e) => handlePhrase(e.results[0][0].transcript);
+    rec.onerror = (e) => log(`Microphone unavailable here (${e.error}). Type the phrase instead.`, true);
+    rec.start(); log("Listening…");
+  } catch (err) { log("Microphone unavailable here. Type the phrase instead.", true); }
+};
+const seg = (onId, offId, key, onVal, offVal) => {
+  $(onId).onclick = () => { setOpt(key, onVal); $(onId).classList.add("on"); $(offId).classList.remove("on"); };
+  $(offId).onclick = () => { setOpt(key, offVal); $(offId).classList.add("on"); $(onId).classList.remove("on"); };
+};
+function setOpt(key, val) {
+  state[key] = val;
+  const map = { gains: ["gains", val], every: ["controlEvery", val], noise: ["gyroStd", val], wind: ["wind", [val, 0, 0]], payload: ["payload", val], robust: ["robust", val] };
+  F.setOption(...map[key]); syncLabels();
+}
+seg("gFixed", "gOld", "gains", "fixed", "asbuilt");
+seg("rOn", "rOff", "robust", true, false);
+$("rate").onchange = (e) => setOpt("every", +e.target.value);
+$("noise").oninput = (e) => setOpt("noise", +e.target.value);
+$("wind").oninput = (e) => setOpt("wind", +e.target.value);
+$("payload").oninput = (e) => setOpt("payload", +e.target.value);
+function syncLabels() {
+  $("rateOut").textContent = `${Math.round(1 / (state.every * PHYS_DT))} Hz`;
+  $("noiseOut").textContent = `${state.noise.toFixed(2)} rad/s`;
+  $("windOut").textContent = `${state.wind.toFixed(2)} N`;
+  $("payloadOut").textContent = `${(state.payload * 100).toFixed(0)} %`;
+  $("rate").value = String(state.every); $("noise").value = state.noise; $("wind").value = state.wind; $("payload").value = state.payload;
+  $("gFixed").classList.toggle("on", state.gains === "fixed"); $("gOld").classList.toggle("on", state.gains !== "fixed");
+  $("rOn").classList.toggle("on", state.robust); $("rOff").classList.toggle("on", !state.robust);
+}
+function preset(o) { Object.assign(state, { gains: "fixed", every: 4, noise: 0, wind: 0, payload: 1, robust: true }, o); makeFlight(); syncLabels(); }
+$("pBug").onclick = () => { preset({ gains: "asbuilt", every: 5 }); dispatch("forward"); log("Pre-fix gains at 400 Hz: below the 438 Hz limit, the rotors saturate and the drone shakes."); };
+$("pNoise").onclick = () => { preset({ gains: "asbuilt", noise: 0.05, robust: false }); dispatch("forward"); log("Pre-fix gains with 0.05 rad/s gyro noise. Switch to Fixed to compare."); };
+$("pTour").onclick = () => { preset({}); tour = [["forward", 0], ["left", 3.5], ["up", 7], ["back", 10.5], ["right", 14.5]]; tour.t0 = F.t; };
+$("pReset").onclick = () => { preset({}); log("Reset to hover at 1 m."); };
+$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "Resume" : "Pause"; $("pause").classList.toggle("on", paused); };
+
+// ---------------------------------------------------------------- loop
+let last = performance.now(), satEma = 0;   // smoothed fraction of control updates that saturate
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05); last = now;
+  if (!paused && !F.diverged()) {
+    const n = Math.round(dt / PHYS_DT);
+    for (let i = 0; i < n; i++) {
+      if (tour && tour.length && F.t - tour.t0 >= tour[0][1]) dispatch(tour.shift()[0], null, "tour");
+      F.step();
+      if ((F.k - 1) % state.every === 0) satEma = 0.995 * satEma + 0.005 * (F.sat ? 1 : 0);
+      if (F.k % 20 === 0) {
+        hist.push({ t: F.t, ep: Math.hypot(F.p[0] - F.target[0], F.p[1] - F.target[1], F.p[2] - F.target[2]), ea: attitudeErrorDeg(F.q, F.qd), u: [...F.u] });
+        while (hist.length && hist[0].t < F.t - 10) hist.shift();
+        trail.push([...F.p]); if (trail.length > TRAIL_N) trail.shift();
+      }
+    }
+  }
+  // scene
+  drone.position.set(...F.p); drone.quaternion.set(F.q[1], F.q[2], F.q[3], F.q[0]);
+  rotorMeshes.forEach((m, i) => (m.material.opacity = 0.35 + 0.6 * (F.u[i] / P.mixer.U_MAX)));
+  targetRing.position.set(...F.target);
+  refDot.position.set(...F.traj.position(F.tTraj));
+  const pos = trailGeo.attributes.position.array;
+  trail.forEach((p, i) => pos.set(p, i * 3)); trailGeo.setDrawRange(0, trail.length); trailGeo.attributes.position.needsUpdate = true;
+  if (camMode === "chase") { camera.position.set(F.p[0] - 2.6, F.p[1] - 2.2, F.p[2] + 1.5); camera.lookAt(F.p[0] + 0.4, F.p[1], F.p[2]); }
+  else if (camMode === "top") { camera.position.set(F.p[0], F.p[1] - 0.01, F.p[2] + 9); camera.lookAt(F.p[0], F.p[1], 0); }
+  else controls.update();
+  renderer.render(scene, camera);
+
+  // HUD
+  const h = hist[hist.length - 1] || { ep: 0, ea: 0, u: F.u };
+  const tower = P.safety.OBSTACLE_FACE_X - F.p[0];
+  const satPct = 100 * satEma;
+  $("hud").innerHTML = `<div>t <b>${F.t.toFixed(1)} s</b> · command <b>${activeCmd}</b></div>
+    <div>x ${F.p[0].toFixed(3)}  y ${F.p[1].toFixed(3)}  z ${F.p[2].toFixed(3)} m</div>
+    <div>q [${F.q.map((c) => c.toFixed(3)).join(", ")}]</div>
+    <div>to target ${h.ep.toFixed(3)} m · tower face ${tower.toFixed(2)} m</div>`;
+  const pills = [];
+  if (F.diverged()) pills.push(["bad", "Lost control, press reset"]);
+  else if (satPct > 20) pills.push(["bad", `Rotors saturated ${satPct.toFixed(0)}%`]);
+  else if (h.ep < P.traj.POSITION_TOLERANCE_M && Math.hypot(...F.v) < 0.05) pills.push(["good", "On target"]);
+  else pills.push(["info", "Flying"]);
+  pills.push([state.gains === "fixed" ? "info" : "warn", state.gains === "fixed" ? "Fixed gains" : "Pre-fix gains"]);
+  if (state.every !== 4) pills.push(["warn", `${Math.round(1 / (state.every * PHYS_DT))} Hz control`]);
+  $("status").innerHTML = pills.map(([c, t]) => `<span class="pill ${c}">${t}</span>`).join("");
+
+  // charts
+  drawChart(charts[0], [(x) => x.ep], 2, [C.accent], [0, 1, 2]);
+  drawChart(charts[1], [(x) => x.ea], 30, [C.c[1]], [0, 15, 30]);
+  drawChart(charts[2], [0, 1, 2, 3].map((i) => (x) => x.u[i]), 6, C.c, [0, 3, 6]);
+  $("lp").textContent = `${h.ep.toFixed(3)} m`; $("la").textContent = `${h.ea.toFixed(2)}°`; $("lu").textContent = h.u.map((x) => x.toFixed(2)).join(" ");
+  requestAnimationFrame(frame);
+}
+
+makeFlight(); syncLabels(); facts(); stabTable(); setCam("chase"); resize();
+setTimeout(() => dispatch("forward", null, "demo"), 600);
+requestAnimationFrame(frame);
+</script>

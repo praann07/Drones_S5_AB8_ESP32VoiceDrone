@@ -121,7 +121,7 @@ def test_command_vocabulary_matches_synonyms():
     actually accepts - a guide that drifts from the real vocabulary would
     be worse than no guide at all."""
     vocab = command_vocabulary()
-    assert set(vocab.keys()) == set(COMMANDS)
+    assert set(vocab.keys()) == set(COMMANDS) | {"land"}
     assert "straight" in vocab["forward"]
     assert "reverse" in vocab["back"]
     assert "pause" in vocab["stop"]
@@ -260,7 +260,7 @@ def test_command_preemption_mid_flight():
     assert s["peak_x_m"] < WAYPOINT_OFFSET_M          # never reached the waypoint
     assert s["clearance_to_tower_m"] > 0.0
     assert s["reversal_latency_s"] is not None
-    assert s["reversal_latency_s"] <= 0.5             # immediate override
+    assert s["reversal_latency_s"] <= 0.5              # immediate override
     assert s["final_position_error_m"] <= POSITION_TOLERANCE_M
     assert np.allclose(s["final_position_m"], s["back_target"], atol=POSITION_TOLERANCE_M)
     df = pd.read_parquet(s["log_path"])
@@ -411,3 +411,38 @@ def test_telemetry_dashboard_hud():
         assert "FORWARD" in status_text.get_text()
     finally:
         plt.close(fig)
+
+
+def test_asr_grammar_covers_every_command_and_synonym():
+    from commands import asr_grammar
+    grammar = asr_grammar()
+    assert grammar[-1] == "[unk]" and len(grammar) == len(set(grammar))
+    for cmd, synonyms in command_vocabulary().items():
+        assert cmd in grammar
+        assert all(s in grammar for s in synonyms)
+
+
+def test_unknown_word_token_never_triggers_a_command():
+    assert classify("[unk]") is None
+    assert classify("[unk] left") == "left"
+    assert classify("go [unk] up") == "up"
+
+
+MODEL_DIR = ROOT / "vosk-model-small-en-us-0.15"
+VOICE_DIR = ROOT / "05_voice_interface"
+
+
+@pytest.mark.skipif(not MODEL_DIR.exists(), reason="vosk model not downloaded")
+def test_every_grammar_word_is_in_the_vosk_model_vocabulary():
+    # Vosk drops grammar words the model doesn't know and only says so in its
+    # native log ("Ignoring word missing in vocabulary"), so build the
+    # recognizer in a subprocess and check that log.
+    import subprocess
+    code = ("import json,sys; sys.path.insert(0, r'%s'); from commands import asr_grammar; "
+            "from vosk import Model, KaldiRecognizer, SetLogLevel; SetLogLevel(0); "
+            "KaldiRecognizer(Model(r'%s'), 16000, json.dumps(asr_grammar()))"
+            % (VOICE_DIR, MODEL_DIR))
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr[-500:]
+    assert "UpdateGrammarFst" in out.stderr          # grammar really applied
+    assert "missing" not in out.stderr.lower(), out.stderr[-500:]

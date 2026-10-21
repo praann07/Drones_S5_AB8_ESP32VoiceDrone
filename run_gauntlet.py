@@ -73,8 +73,12 @@ def _fly(fc: FlightController, cmd: str, duration_s: float = FLIGHT_S) -> dict:
     if axis is not None and offset[axis] != 0:
         sign = np.sign(offset[axis])
         col = ["px","py","pz"][axis]
-        overshoot = float(max(0.0, sign * (df[col].max() if sign > 0 else -df[col].min())
-                              - abs(offset[axis])))
+        # displacement from where the leg STARTED, not the absolute
+        # coordinate: hover altitude is z=1.0, so comparing absolute z to
+        # the 0.5 m up/down offset reported ~1.0 m of phantom overshoot.
+        start = float(df[col].iloc[0])
+        extreme = (df[col].max() - start) if sign > 0 else (start - df[col].min())
+        overshoot = float(max(0.0, extreme - abs(offset[axis])))
     else:
         overshoot = 0.0
 

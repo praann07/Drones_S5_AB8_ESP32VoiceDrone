@@ -1,0 +1,105 @@
+"""Write web/params.js: every number the browser simulator uses, read from
+the Python sources so the web cascade can never drift from the real one.
+
+    .venv\\Scripts\\python.exe web\\export_web_sim.py
+
+Sources: frozen SINDy artifact (identified model + gains), controller.py,
+mixer.py, position_controller.py, trajectory.py, commands.py, city.py,
+sim_driver.py, quad.xml (mass/inertia via MuJoCo), and the stability
+analysis results (04_control/run_stability.py).
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import mujoco
+import numpy as np
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parent.parent
+for _p in ("04_control", "05_voice_interface", "01_simulation", "01_simulation/models",
+           "02_identification", "03_validation"):
+    sys.path.insert(0, str(ROOT / _p))
+
+import commands  # noqa: E402
+import controller  # noqa: E402
+import mixer  # noqa: E402
+import position_controller as pc  # noqa: E402
+import trajectory as tj  # noqa: E402
+from city import CITY_OBJECTS, DRONE_RADIUS_M, OBSTACLE_FACE_X, SAFETY_MARGIN_M  # noqa: E402
+from flight import DT, load_frozen_sindy  # noqa: E402
+from run_stability import OUT_DIR as STAB_DIR, legacy_gains  # noqa: E402
+from sim_driver import C_ROT, C_TRANS, MODEL_PATH  # noqa: E402
+
+OUT = Path(__file__).resolve().parent / "params.js"
+
+
+def main() -> None:
+    sindy, A_sindy = load_frozen_sindy()
+    B_u = sindy.coef_[3:6, 7:11]
+    Kq, Ko = controller.gains_from_identified_model(A_sindy, B_u)
+    Kq_old, Ko_old = legacy_gains(A_sindy)
+    b = controller.identified_torque_effectiveness(B_u)
+
+    model = mujoco.MjModel.from_xml_path(str(MODEL_PATH))
+    body = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "quad")
+
+    names = list(sindy.feature_names)
+    sindy_rows = {}
+    for i, lab in ((3, "omega_x_dot"), (4, "omega_y_dot"), (5, "omega_z_dot")):
+        sindy_rows[lab] = [[names[j], float(sindy.coef_[i, j])]
+                           for j in range(len(names)) if abs(sindy.coef_[i, j]) > 1e-9]
+
+    stab = pd.read_csv(STAB_DIR / "stability_results.csv")
+    stab = stab[(stab.loop == "inner") & (stab.plant == "identified")]
+    stability = {g: {r.axis: {k: float(getattr(r, k)) for k in
+                              ("min_rate_hz", "min_rate_hz_delay", "gain_margin_500Hz",
+                               "gain_margin_500Hz_delay", "rho_500Hz_delay", "zeta")}
+                     for r in stab[stab.gains == g].itertuples()}
+                 for g in ("fixed", "legacy")}
+
+    P = {
+        "DT": DT,
+        "MASS": float(model.body_mass[body]),
+        "INERTIA": model.body_inertia[body].tolist(),
+        "GRAVITY": pc.GRAVITY,
+        "C_TRANS": C_TRANS,
+        "C_ROT": C_ROT,
+        "HOVER_POS": model.body_pos[body].tolist(),
+        "mixer": {"ARM": mixer.ARM, "K_M": mixer.K_M, "U_MAX": mixer.U_MAX,
+                  "HOVER_THRUST_PER_ROTOR": mixer.HOVER_THRUST_PER_ROTOR,
+                  "M_INV": np.linalg.inv(mixer.mixer_matrix()).tolist()},
+        "gains": {"Kq": Kq.tolist(), "Komega": Ko.tolist(),
+                  "settling_s": controller.SETTLING_TIME_S, "zeta": controller.DAMPING_RATIO},
+        "gains_asbuilt": {"Kq": Kq_old.tolist(), "Komega": Ko_old.tolist()},
+        "identified": {"a": np.diag(A_sindy)[3:6].tolist(), "b": b.tolist(),
+                       "inertia_from_b": (1.0 / b).tolist(), "sindy_rows": sindy_rows,
+                       "n_active_terms": int(np.count_nonzero(np.abs(sindy.coef_) > 1e-9)),
+                       "n_library_terms": int(sindy.coef_.size)},
+        "outer": {"KP": pc.KP_POS, "KD": pc.KD_POS, "KI_DEFAULT": pc.KI_POS_DEFAULT,
+                  "I_ACTIVE_RADIUS_M": pc.I_ACTIVE_RADIUS_M, "I_ACTIVE_SPEED_MPS": pc.I_ACTIVE_SPEED_MPS,
+                  "I_ACTIVE_VEL_MPS": pc.I_ACTIVE_VEL_MPS, "I_MAX_ACCEL_MPS2": pc.I_MAX_ACCEL_MPS2,
+                  "MAX_BANK_DEG": pc.MAX_BANK_DEG, "GRAVITY": pc.GRAVITY},
+        "traj": {"MAX_VELOCITY_MPS": tj.MAX_VELOCITY_MPS, "MAX_ACCEL_MPS2": tj.MAX_ACCEL_MPS2,
+                 "MAX_JERK_MPS3": tj.MAX_JERK_MPS3, "MAX_THRUST_N": tj.MAX_THRUST_N,
+                 "POSITION_TOLERANCE_M": tj.POSITION_TOLERANCE_M},
+        "safety": {"SAFETY_MARGIN_M": SAFETY_MARGIN_M, "DRONE_RADIUS_M": DRONE_RADIUS_M,
+                   "OBSTACLE_FACE_X": OBSTACLE_FACE_X},
+        "vocab": {"commands": list(commands.COMMANDS),
+                  "synonyms": dict(commands._SYNONYMS),
+                  "offsets": {c: commands.target_offset(c).tolist() for c in commands.COMMANDS},
+                  "CUTOFF": commands._CUTOFF, "SHORT_TOKEN_CUTOFF": commands._SHORT_TOKEN_CUTOFF,
+                  "SHORT_TOKEN_LEN": commands._SHORT_TOKEN_LEN},
+        "city": [{"name": o.name, "x": o.x, "y": o.y, "half_x": o.half_x, "half_y": o.half_y,
+                  "height": o.height, "rgba": list(o.rgba), "kind": o.kind} for o in CITY_OBJECTS],
+        "stability": stability,
+    }
+    OUT.write_text("// GENERATED by web/export_web_sim.py - do not edit by hand.\n"
+                   f"export const PARAMS = {json.dumps(P, indent=1)};\n", encoding="utf-8")
+    print(f"wrote {OUT}  Kq={np.round(Kq, 4)}  Komega={np.round(Ko, 4)}")
+
+
+if __name__ == "__main__":
+    main()

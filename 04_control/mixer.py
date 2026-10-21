@@ -38,3 +38,47 @@ def inverse_mix(T: float, tau: np.ndarray, clip: bool = True) -> tuple[np.ndarra
     if clip:
         u = np.clip(u, 0.0, U_MAX)
     return u, saturated
+
+
+def _feasible(u: np.ndarray) -> bool:
+    return bool(np.all(u >= 0.0) and np.all(u <= U_MAX))
+
+
+def inverse_mix_yaw_priority(T: float, tau: np.ndarray) -> tuple[np.ndarray, bool]:
+    """Like inverse_mix, but when the command would clip a rotor, shed
+    YAW torque first (then roll/pitch) so the collective thrust is kept.
+
+    Why: yaw is the weakest axis (K_M=0.02 m vs ARM=0.106 m), so each N*m
+    of yaw torque costs ~5x more rotor headroom than roll/pitch, yet yaw is
+    never commanded to do real work here. With plain clipping, a small
+    yaw-gyro error (0.05 rad/s) pinned rotors at 0/6 N on ~70% of steps and
+    the lost collective thrust broke altitude hold (see run_robustness.py).
+    When nothing would clip this returns exactly what inverse_mix does.
+
+    Returns (u, intervened): intervened=True if any torque had to be shed.
+    """
+    tau = np.asarray(tau, dtype=float)
+    u = _M_INV @ np.concatenate([[T], tau])
+    if _feasible(u):
+        return u, False
+
+    def mix(sxy: float, sz: float) -> np.ndarray:
+        return _M_INV @ np.concatenate([[T], [tau[0] * sxy, tau[1] * sxy, tau[2] * sz]])
+
+    # Feasible set along each scale is an interval containing 0 (convex),
+    # so bisection for its upper end is valid. 1) shed yaw only.
+    if _feasible(mix(1.0, 0.0)):
+        lo, hi = 0.0, 1.0
+        for _ in range(30):
+            mid = 0.5 * (lo + hi)
+            lo, hi = (mid, hi) if _feasible(mix(1.0, mid)) else (lo, mid)
+        return mix(1.0, lo), True
+    # 2) yaw fully shed and still infeasible: shrink roll/pitch too.
+    if _feasible(mix(0.0, 0.0)):
+        lo, hi = 0.0, 1.0
+        for _ in range(30):
+            mid = 0.5 * (lo + hi)
+            lo, hi = (mid, hi) if _feasible(mix(mid, 0.0)) else (lo, mid)
+        return mix(lo, 0.0), True
+    # 3) thrust alone is unachievable: nothing to prioritise, clip.
+    return np.clip(mix(0.0, 0.0), 0.0, U_MAX), True

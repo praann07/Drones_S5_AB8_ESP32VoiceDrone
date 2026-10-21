@@ -48,8 +48,8 @@ of the problem, running at different speeds.
 
 The **outer loop runs the whole cascade math every control step**, but
 it's DESIGNED to react slowly and smoothly (its target settling time is
-3 seconds). The **inner loop reacts fast** (its target settling time is
-1.5 seconds, and in practice measured at 0.56–0.86s) — it has to, because
+2 seconds). The **inner loop reacts fast** (its target settling time is
+0.5 seconds; measured 0.25 s on 15° steps, 0.53 s on a 60° step) — it has to, because
 if the drone tips over even slightly and nothing corrects it FAST, it
 crashes. This speed difference ("bandwidth separation") is why cascading
 works: the fast inner loop can basically ignore the outer loop as
@@ -94,12 +94,25 @@ torque = -Kq * (attitude_error) - Komega * (spin_error)
 
 Looks like an ordinary PD controller too — but the **numbers Kq and
 Komega are not guessed or hand-tuned**. They come directly out of
-`gains_from_identified_model()`, which reads the actual coefficients
-SINDy discovered in Stage B (specifically, how strongly aerodynamic drag
-resists spinning, extracted straight from the identified equations) and
-solves a textbook pole-placement formula for exactly the response speed
-you asked for (1.5 second settling, damping ratio 0.7 — meaning it
-corrects fast without oscillating wildly). **If you re-ran Stage B and
+`gains_from_identified_model()`, which reads two coefficients per axis
+that SINDy discovered in Stage B: how strongly aerodynamic drag resists
+spinning (`a`), and how much angular acceleration one N·m of torque
+produces (`b`, which is the identified 1/inertia, read from the rotor
+coefficients through the mixer). It then solves a textbook
+pole-placement formula for exactly the response you asked for (0.5 s
+settling, damping ratio 0.7):
+
+```
+wn = 4 / (zeta * Ts)
+Kq     = 2 * wn^2 / b          (the 2 converts quaternion error to angle)
+Komega = (2 * zeta * wn + a) / b
+```
+
+Until 2026-10-20 the `/ b` was missing, so every gain was about 290×
+too large. The drone still flew, but its poles were far from the design
+and the loop only stayed stable above about 440 Hz control rate. See
+`04_control/run_stability.py` and the README's Key findings.
+**If you re-ran Stage B and
 got a slightly different identified model, these gains would
 automatically come out slightly different too** — that coupling is the
 entire point, and it's what makes this "data-driven control" instead of
@@ -245,10 +258,12 @@ clean, singularity-free error definition; the one quirk (q and -q being
 the same rotation) is explicitly handled.
 
 **"Are your gains hand-tuned?"** → No — `gains_from_identified_model()`
-derives them from the SINDy Jacobian via standard 2nd-order pole
-placement. Only the TARGET response speed (1.5s settling, 0.7 damping)
-is a human choice; the actual Kp/Kd numbers are computed from the
-identified physics.
+derives them from the SINDy Jacobian (drag `a`) and the SINDy control
+effectiveness (`b` = identified 1/inertia) via standard 2nd-order pole
+placement. Only the TARGET response (0.5 s settling, 0.7 damping)
+is a human choice; the actual gains are computed from the
+identified physics, and `tests/test_stability.py` checks that the
+resulting closed-loop poles land exactly on the design.
 
 **"Does your gain design account for cross-axis coupling?"** → No, by
 design — it treats each axis independently (uses only the diagonal of

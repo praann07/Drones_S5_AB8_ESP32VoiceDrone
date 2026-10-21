@@ -16,14 +16,19 @@ import difflib
 import numpy as np
 
 COMMANDS = ("forward", "back", "left", "right", "up", "down", "hover", "stop")
+# "land" is not a fixed-offset waypoint like the 8 above: it descends onto
+# whatever is under the drone (ground, pad or a roof, see city.surface_under)
+# and switches the motors off on touchdown (flight.py). Kept out of COMMANDS
+# so the fixed-offset trial/gauntlet gates are unchanged.
+LAND_COMMAND = "land"
+ALL_COMMANDS = COMMANDS + (LAND_COMMAND,)
 WAYPOINT_OFFSET_M = 1.5
+GOTO_COMMAND = "goto"
 # Vertical offset is deliberately smaller than the lateral one: hover
-# altitude is ~1.0m (quad.xml body pos), and the visual floor in scene.xml
-# is non-collidable (contype=0 conaffinity=0 - visualization only, see
-# that file's own comment), so nothing physically stops "down" from
-# flying the drone below z=0 if the offset is too large. 0.5m keeps
-# "down" landing at ~0.5m - comfortably above the floor - while still
-# being a visually obvious vertical move.
+# altitude is ~1.0m (quad.xml body pos), so a 0.5m "down" is a visually
+# obvious move that stays well above the floor. Repeated "down" commands
+# stop at MIN_CLEARANCE_M above the surface below (flight.py); only "land"
+# goes all the way down.
 VERTICAL_OFFSET_M = 0.5
 
 _COMMAND_OFFSET = {
@@ -44,15 +49,48 @@ def target_offset(command: str) -> np.ndarray:
     return _COMMAND_OFFSET[command].copy()
 
 
+def parse_goto(transcript: str) -> np.ndarray | None:
+    """Parse 'goto x y z' or 'go to x y z' into a world-frame position.
+    Returns None if the transcript is not a valid goto command."""
+    import re
+    match = re.search(r'goto\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)', transcript.lower())
+    if not match:
+        match = re.search(r'go\s+to\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+(-?\d+\.?\d*)', transcript.lower())
+    if not match:
+        return None
+    return np.array([float(match.group(1)), float(match.group(2)), float(match.group(3))])
+
+
 def command_vocabulary() -> dict[str, list[str]]:
     """Every fixed command mapped to its recognized synonyms (may be an
     empty list). Built by inverting `_SYNONYMS` so a printed guide (see
     print_commands_guide.py) can never drift out of sync with the real
     vocabulary - there is exactly one place synonyms are defined."""
-    out: dict[str, list[str]] = {cmd: [] for cmd in COMMANDS}
+    out: dict[str, list[str]] = {cmd: [] for cmd in ALL_COMMANDS}
     for word, cmd in _SYNONYMS.items():
         out[cmd].append(word)
     return out
+
+
+# Two-word phrases joined into one token before matching ("take off" ->
+# "takeoff"), so each half can't be mistaken for something else ("off").
+_PHRASES = {"take off": "takeoff", "touch down": "touchdown"}
+
+# Filler words people say around a command ("go left", "move up please").
+# They classify to nothing; they're only in the grammar so the recognizer
+# doesn't force them onto a command word.
+_FILLER_WORDS = ("go", "move", "turn", "fly", "drone", "please", "now", "a", "bit",
+                 "little", "to", "the")
+
+
+def asr_grammar() -> list[str]:
+    """Word list for Vosk's restricted-grammar mode: every command, every
+    synonym, a few filler words, and "[unk]" for anything else. With the
+    open English vocabulary a noisy "left" can come back as "lift" (a
+    synonym for up); restricted to this list the recognizer can only
+    return words classify() understands, or [unk]."""
+    words = list(ALL_COMMANDS) + list(_SYNONYMS) + list(_PHRASES) + list(_FILLER_WORDS)
+    return list(dict.fromkeys(words)) + ["[unk]"]
 
 
 # Natural synonyms that mean a command word but share no useful letter
@@ -64,7 +102,8 @@ _SYNONYMS = {
     "backward": "back", "backwards": "back", "reverse": "back",
     "halt": "stop", "freeze": "stop", "wait": "stop", "pause": "stop",
     "ascend": "up", "climb": "up", "rise": "up", "higher": "up", "lift": "up",
-    "descend": "down", "lower": "down", "land": "down", "drop": "down",
+    "descend": "down", "lower": "down", "drop": "down",
+    "landing": "land", "touchdown": "land", "lands": "land", "takeoff": "up",
     "stay": "hover", "hold": "hover",
 }
 
@@ -116,10 +155,23 @@ def classify(transcript: str) -> str | None:
     if not text:
         return None
 
+    for phrase, joined in _PHRASES.items():
+        text = text.replace(phrase, joined)
     tokens = text.split()
     for tok in tokens:
         if tok in _SYNONYMS:
             return _SYNONYMS[tok]
+
+    # Check for goto command
+    if "goto" in tokens or "go" in tokens:
+        coords = parse_goto(text)
+        if coords is not None:
+            return GOTO_COMMAND
+
+    # "land" switches the motors off, so it is matched only as an exact word
+    # (or a synonym above), never by fuzzy spelling: "and" scores 0.86 against it.
+    if LAND_COMMAND in tokens:
+        return LAND_COMMAND
 
     whole = difflib.get_close_matches(text, COMMANDS, n=1, cutoff=_CUTOFF)
     if whole:

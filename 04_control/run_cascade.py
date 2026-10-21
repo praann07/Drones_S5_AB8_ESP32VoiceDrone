@@ -21,7 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "02_identification"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "03_validation"))
 from closed_loop_sim import DT, rollout_cascade_on_mujoco, rollout_cascade_on_sindy  # noqa: E402
-from controller import QuaternionController, gains_from_identified_model  # noqa: E402
+from controller import (QuaternionController, gains_from_identified_model,  # noqa: E402
+                        identified_torque_effectiveness)
 from position_controller import (  # noqa: E402
     KD_POS, KP_POS, MASS_KG, POS_DAMPING_RATIO, POS_SETTLING_TIME_S, PositionController,
 )
@@ -63,17 +64,20 @@ def position_settling_time(t, error_m, band=POSITION_TOLERANCE_M):
 def run_all():
     fitted = fit_models(verbose=False)
     sindy = fitted["sindy"]
-    A_sindy, _ = linearize_sindy_at_hover(sindy)
-    Kq, Komega = gains_from_identified_model(A_sindy)
+    A_sindy, B_sindy = linearize_sindy_at_hover(sindy)
+    Kq, Komega = gains_from_identified_model(A_sindy, B_sindy[3:6])
     inner = QuaternionController(Kq, Komega)
     outer = PositionController()
 
     print(f"Outer-loop natural frequency: {np.sqrt(KP_POS):.3f} rad/s "
           f"(settling {POS_SETTLING_TIME_S}s, damping {POS_DAMPING_RATIO})")
-    print(f"Inner-loop natural frequency: {np.sqrt(Kq[0] / 2):.3f} rad/s "
+    # Closed-loop wn^2 = b*Kq/2 (b = identified 1/I); sqrt(Kq/2) alone
+    # was only right while the gains lacked the 1/b factor.
+    wn_inner = np.sqrt(identified_torque_effectiveness(B_sindy[3:6])[0] * Kq[0] / 2)
+    print(f"Inner-loop natural frequency: {wn_inner:.3f} rad/s "
           f"(from Stage D part 1 gains)")
     print(f"Cascade bandwidth separation (inner/outer): "
-          f"{np.sqrt(Kq[0] / 2) / np.sqrt(KP_POS):.2f}x "
+          f"{wn_inner / np.sqrt(KP_POS):.2f}x "
           f"(docs/TDD.md section 7b requires outer < inner)")
 
     p0, v0 = np.zeros(3), np.zeros(3)

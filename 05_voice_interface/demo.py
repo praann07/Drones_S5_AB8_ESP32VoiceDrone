@@ -43,8 +43,11 @@ for _p in ("05_voice_interface", "01_simulation/models", "04_control"):
     sys.path.insert(0, str(ROOT / _p))
 from flight import DT, FlightController, IDENTITY_Q  # noqa: E402
 from voice_input import TextSource, VoskSource  # noqa: E402
-from city import OBSTACLE_FACE_X  # noqa: E402
+from world import CampusWorld, CAMPUS_SCENE  # noqa: E402
 from trajectory import POSITION_TOLERANCE_M  # noqa: E402
+from commands import parse_goto, GOTO_COMMAND, ALL_COMMANDS  # noqa: E402
+from minimap import MiniMap, REDRAW_S as MAP_REDRAW_S  # noqa: E402
+from places import PlaceBook  # noqa: E402
 
 SESSIONS_DIR = ROOT / "data" / "processed" / "voice_sessions"
 
@@ -56,6 +59,7 @@ HISTORY_LEN = int(round(HISTORY_S / DT))
 # not the control law, so the chart is repainted at ~20 Hz while every
 # single control step still gets pushed into the rolling buffers first.
 DASHBOARD_REDRAW_S = 0.05
+MAX_STEPS_PER_FRAME = 50  # 0.1 s of physics per drawn frame at most
 
 
 class TelemetryHistory:
@@ -257,9 +261,10 @@ def build_dashboard():
 
     button_specs = [("FORWARD", "forward"), ("BACK", "back"), ("LEFT", "left"),
                     ("RIGHT", "right"), ("UP", "up"), ("DOWN", "down"),
-                    ("HOVER", "hover"), ("STOP", "stop")]
+                    ("HOVER", "hover"), ("STOP", "stop"), ("LAND", "land")]
     n = len(button_specs)
-    btn_w, gap = 0.145, 0.012
+    gap = 0.012
+    btn_w = (0.96 - (n - 1) * gap) / n   # the whole row fits the window width
     total_w = n * btn_w + (n - 1) * gap
     start_x = 0.5 - total_w / 2
     buttons = []
@@ -340,7 +345,9 @@ def update_dashboard(fig, axes, lines, status_text, hist: TelemetryHistory,
     lat = meta.get("latencies_ms", {}) if meta else {}
     transcript = meta.get("transcript", "") if meta else ""
     status_mode = "TRACKING" if cur_pos_err > 0.01 else "HOVER/STEADY"
-    dist_tower = OBSTACLE_FACE_X - p[0]
+    if fc.phase != "flying":
+        status_mode = fc.status()       # LANDING on ... / LANDED on ...
+    near_d, near_name = fc.world.nearest(p)
 
     # LISTENING shows the in-progress transcript AS it's being spoken (see
     # voice_input.VoskSource.get_partial) - "(silence)" is a real, visible
@@ -350,25 +357,35 @@ def update_dashboard(fig, axes, lines, status_text, hist: TelemetryHistory,
     log_block = "\n".join(f"│   {e}" for e in log_entries) if log_entries else "│   (nothing heard yet)"
 
     status_text.set_text(
-        f"┌─ TELEMETRY HUD ── MODE: {status_mode:<12s} ── CMD: {last_cmd.upper():<7s} ── CAM: {cam.upper()}\n"
+        f"┌─ TELEMETRY HUD ── MODE: {status_mode:<22s} ── CMD: {last_cmd.upper():<7s} ── CAM: {cam.upper()}\n"
         f"│ LAST DISPATCH TRANSCRIPT: {transcript!r}\n"
         f"│ LISTENING: {listening_line}\n"
-        f"│ POS (m): X={p[0]:+5.2f} Y={p[1]:+5.2f} Z={p[2]:+5.2f}  │ ERR: pos={cur_pos_err:.4f}m  att={cur_att_err:5.2f}°  │ TOWER: d={dist_tower:+5.2f}m\n"
+        f"│ POS (m): X={p[0]:+5.2f} Y={p[1]:+5.2f} Z={p[2]:+5.2f}  │ ERR: pos={cur_pos_err:.4f}m  att={cur_att_err:5.2f}°  │ NEAREST: {near_name} {near_d:.2f}m\n"
         f"│ QUAT   : W={q[0]:+5.2f} X={q[1]:+5.2f} Y={q[2]:+5.2f} Z={q[3]:+5.2f}  │ LAT: cls={lat.get('classify', 0):.2f}ms traj={lat.get('trajectory', 0):.2f}ms\n"
         f"│ HEARD LOG (most recent last):\n"
         f"{log_block}"
     )
 
+    # draw_idle + flush_events is enough to repaint and keep the window
+    # responsive. plt.pause() is NOT used: in the Tk backend it calls show()
+    # on every open figure, which forces a full redraw of each one (the map
+    # window: ~200 ms) and raises every window to the front 20 times a second.
     fig.canvas.draw_idle()
     fig.canvas.flush_events()
-    if "agg" not in matplotlib.get_backend().lower():
-        plt.pause(0.001)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", choices=["text", "vosk"], default="text")
+    ap.add_argument("--world", choices=["city", "campus"], default="city",
+                    help="city: the original test city; campus: 1:10 Amrita Coimbatore "
+                         "campus from OpenStreetMap (01_simulation/models/make_campus.py)")
     ap.add_argument("--model-dir", default=None)
+    ap.add_argument("--step-mode", action="store_true",
+                    help="forward/back/left/right move a fixed 1.5 m (as in the gates) "
+                         "instead of flying on until a building, the map edge or 'stop'")
+    ap.add_argument("--no-map", action="store_true",
+                    help="don't open the live top-down map window (minimap.py)")
     ap.add_argument("--device", type=int, default=None,
                     help="Microphone device index from sounddevice")
     ap.add_argument("--duration", type=float, default=None,
@@ -377,8 +394,16 @@ def main():
                     help="Comma-separated scripted commands to dispatch in text mode")
     args = ap.parse_args()
 
+    if args.world == "campus":
+        fc = FlightController(scene_path=CAMPUS_SCENE, world=CampusWorld(),
+                              continuous=not args.step_mode)
+    else:
+        fc = FlightController(continuous=not args.step_mode)
+    places = PlaceBook(fc.world)      # "go to <place>": named buildings of this world
+
     if args.source == "vosk":
-        src = VoskSource(model_dir=args.model_dir, device=args.device)
+        src = VoskSource(model_dir=args.model_dir, device=args.device,
+                         extra_words=places.grammar_words())
         src.start()
     else:
         if args.scripted:
@@ -386,8 +411,6 @@ def main():
             src = TextSource(scripted=cmd_list)
         else:
             src = TextSource(interactive=True)
-
-    fc = FlightController()
     last_cmd = "hover"
     last_meta = {}
     hist = TelemetryHistory()
@@ -411,6 +434,10 @@ def main():
         return
 
     fig, axes, lines, status_text = build_dashboard()
+    # Third window: the whole printed map with the drone's live position,
+    # heading, trail and target (display only, reads fc state).
+    minimap = None if args.no_map else MiniMap(args.world)
+    next_map = time.perf_counter()
     t_start = time.perf_counter()
 
     import mujoco as _mj
@@ -441,7 +468,7 @@ def main():
         print(f"Live demo running. {input_desc.capitalize()} a command OR click a "
               f"button in the dashboard window - BOTH work at the same time, every "
               f"single control step, regardless of --source "
-              f"({', '.join(['forward','back','left','right','up','down','hover','stop'])}). "
+              f"({', '.join(ALL_COMMANDS)}). "
               f"Camera: press B (only works if the MuJoCo VIEWER window has "
               f"keyboard focus - click its titlebar first) OR click "
               f"'TOGGLE CAMERA' in the dashboard window (works regardless of "
@@ -478,6 +505,24 @@ def main():
             # never heard anything at all". `meta` always carries the real
             # transcript (voice_input._BaseSource._emit), so show it either
             # way.
+            # "go to <place>" is checked before the single-word commands:
+            # "go to the canteen" must not fall through to a fuzzy "stop".
+            heard = (meta or {}).get("transcript", "")
+            place = places.match(heard) if heard and not heard.startswith("[button]") else None
+            if place is not None:
+                p_before = fc.position()
+                att_err_before = fc.attitude_error_deg(IDENTITY_Q)
+                res = fc.go_to(place)
+                last_cmd, last_meta = "goto", meta
+                entry = f"{heard!r} -> GO TO {place}" + ("" if res["ok"] else "  (NO ROUTE)")
+                print(f"[dispatch] {entry}", flush=True)
+                heard_log.append(entry)
+                if res["ok"]:
+                    flight_logger.on_dispatch("goto", heard, p_before,
+                                              res["target"] if res["target"] is not None else p_before,
+                                              meta.get("latencies_ms", {}).get("classify", 0.0),
+                                              res["plan_ms"], att_err_before)
+                cmd, meta = None, None
             if cmd is None and meta and meta.get("transcript"):
                 transcript = meta.get("transcript", "")
                 print(f"[heard] {format_heard_entry(transcript, None)}", flush=True)
@@ -487,7 +532,13 @@ def main():
                 last_meta = meta
                 p_before = fc.position()
                 att_err_before = fc.attitude_error_deg(IDENTITY_Q)
-                lat = fc.dispatch(cmd)
+                target_pos = None
+                if cmd == GOTO_COMMAND:
+                    transcript = meta.get("transcript", "") if meta else ""
+                    target_pos = parse_goto(transcript)
+                    if target_pos is not None:
+                        print(f"[goto] target: {target_pos.tolist()}", flush=True)
+                lat = fc.dispatch(cmd, target_position=target_pos)
                 if meta:
                     meta["latencies_ms"] = {**meta.get("latencies_ms", {}), "trajectory": lat["trajectory"]}
                 transcript = meta.get("transcript", "") if meta else ""
@@ -497,23 +548,34 @@ def main():
                 flight_logger.on_dispatch(cmd, transcript, p_before, lat["target"],
                                            classify_ms, lat["trajectory"], att_err_before)
 
-            step_ms = fc.step()
-            flight_logger.on_step(step_ms)
+            # Real-time pacing: step the 500 Hz physics until sim time catches
+            # up with the wall clock, then draw once. One step per loop plus
+            # time.sleep(DT) ran several times slower than real time on
+            # Windows, where a 2 ms sleep lasts 1-16 ms.
+            steps = 0
+            while t_sim < time.perf_counter() - t_start and steps < MAX_STEPS_PER_FRAME:
+                step_ms = fc.step()
+                flight_logger.on_step(step_ms)
+                att_err = fc.attitude_error_deg(IDENTITY_Q)
+                pos_err = float(np.linalg.norm(fc.position() - fc.traj.position(fc.t_traj)))
+                control_effort = float(np.sum(np.abs(fc.data.ctrl)))
+                hist.push(t_sim, att_err, pos_err, control_effort)
+                t_sim += DT
+                steps += 1
+            if steps == MAX_STEPS_PER_FRAME:   # fell behind (e.g. window dragged): don't sprint to catch up
+                t_start = time.perf_counter() - t_sim
             _apply_camera()
             viewer.sync()
-
-            att_err = fc.attitude_error_deg(IDENTITY_Q)
-            pos_err = float(np.linalg.norm(fc.position() - fc.traj.position(fc.t_traj)))
-            control_effort = float(np.sum(np.abs(fc.data.ctrl)))
-            hist.push(t_sim, att_err, pos_err, control_effort)
-            t_sim += DT
 
             if time.perf_counter() >= next_redraw:
                 listening = get_partial() if get_partial else ""
                 update_dashboard(fig, axes, lines, status_text, hist, fc, last_cmd, last_meta,
                                   listening, heard_log, view_state["cam"])
                 next_redraw = time.perf_counter() + DASHBOARD_REDRAW_S
-            time.sleep(DT)
+            if minimap is not None and time.perf_counter() >= next_map:
+                minimap.update_from(fc)
+                next_map = time.perf_counter() + MAP_REDRAW_S
+            time.sleep(0.001)
 
         flight_logger.on_exit(fc.position(), fc.attitude_error_deg(IDENTITY_Q))
         saved_path = flight_logger.save()

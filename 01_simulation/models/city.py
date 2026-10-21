@@ -184,3 +184,89 @@ def clamp_target_to_safe_zone(p0, p1, margin: float = SAFETY_MARGIN_M):
     if best_t >= 1.0 - 1e-9:
         return p1.copy()
     return p0 + best_t * d
+
+
+FOOTPRINT_HALF_M = 0.08  # drone feet sit at +-0.07 m (quad.xml), radius 0.01
+
+
+def surface_under(x: float, y: float, pad: float = FOOTPRINT_HALF_M) -> tuple[float, str]:
+    """Height of the highest solid surface any part of the drone's footprint
+    would touch at (x, y), and its name: a building/tower roof, a park,
+    tree or pad top, or the ground ("ground", 0.0). This is what "land"
+    descends onto, and what "down" may not go below."""
+    best_h, best_name = 0.0, "ground"
+    for o in CITY_OBJECTS:
+        if abs(x - o.x) <= o.half_x + pad and abs(y - o.y) <= o.half_y + pad and o.height > best_h:
+            best_h, best_name = o.height, o.name
+    return best_h, best_name
+
+
+DRONE_RADIUS_M = 0.06
+
+
+def _aabb_intersect(lo1, hi1, lo2, hi2):
+    """Check if two AABBs intersect."""
+    return all(lo1[i] <= hi2[i] and lo2[i] <= hi1[i] for i in range(3))
+
+
+def _bezier_aabb(P0, P1, P2, P3, P4, P5):
+    """Compute conservative AABB of a quintic Bezier curve."""
+    points = [P0, P1, P2, P3, P4, P5]
+    lo = np.min(points, axis=0)
+    hi = np.max(points, axis=0)
+    return lo, hi
+
+
+def _de_casteljau_split(P0, P1, P2, P3, P4, P5, t=0.5):
+    """Split a quintic Bezier curve at parameter t using de Casteljau's algorithm."""
+    def lerp(a, b, t):
+        return a + t * (b - a)
+
+    P01 = lerp(P0, P1, t)
+    P12 = lerp(P1, P2, t)
+    P23 = lerp(P2, P3, t)
+    P34 = lerp(P3, P4, t)
+    P45 = lerp(P4, P5, t)
+    P012 = lerp(P01, P12, t)
+    P123 = lerp(P12, P23, t)
+    P234 = lerp(P23, P34, t)
+    P345 = lerp(P34, P45, t)
+    P0123 = lerp(P012, P123, t)
+    P1234 = lerp(P123, P234, t)
+    P2345 = lerp(P234, P345, t)
+    P01234 = lerp(P0123, P1234, t)
+    P12345 = lerp(P1234, P2345, t)
+    P012345 = lerp(P01234, P12345, t)
+
+    left = (P0, P01, P012, P0123, P01234, P012345)
+    right = (P012345, P12345, P2345, P345, P45, P5)
+    return left, right
+
+
+def check_bezier_collision(P0, P1, P2, P3, P4, P5, margin=SAFETY_MARGIN_M,
+                           drone_radius=DRONE_RADIUS_M, max_depth=8):
+    """Check if a quintic Bezier curve collides with any building.
+
+    Uses adaptive subdivision: recursively splits the curve until each
+    segment's AABB is either clear of all buildings or small enough to
+    be considered a collision.
+
+    Returns True if collision detected, False if path is clear.
+    """
+    lo, hi = _bezier_aabb(P0, P1, P2, P3, P4, P5)
+
+    for b in buildings():
+        blo = np.array([b.x - b.half_x - margin - drone_radius,
+                        b.y - b.half_y - margin - drone_radius,
+                        -drone_radius])
+        bhi = np.array([b.x + b.half_x + margin + drone_radius,
+                        b.y + b.half_y + margin + drone_radius,
+                        b.height + drone_radius])
+        if _aabb_intersect(lo, hi, blo, bhi):
+            if max_depth <= 0:
+                return True
+            left, right = _de_casteljau_split(P0, P1, P2, P3, P4, P5, 0.5)
+            return (check_bezier_collision(*left, margin, drone_radius, max_depth - 1) or
+                    check_bezier_collision(*right, margin, drone_radius, max_depth - 1))
+
+    return False

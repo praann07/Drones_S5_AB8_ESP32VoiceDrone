@@ -98,10 +98,10 @@ Every quantitative result below is derived from reproducible scripts with strict
 | **Stage C** — Head-to-Head | Evaluated in DMDc's *own* near-hover regime | SINDy **0.0789** vs DMDc **0.0825** NRMSE (SINDy wins even near hover) | ✅ PASS |
 | **Stage C** — Model Selection | Parsimony, global validity, closed-loop tracking | **SINDy Selected** (see [`model_selection.md`](data/processed/validation_plots/model_selection.md)) | ✅ PASS |
 | **Stage D** — Inner Loop | Step settling time (SINDy model vs. MuJoCo plant) | **0.56 s – 0.86 s** (agrees within **~0.3%** across all axes) | ✅ PASS |
-| **Stage D** — Full Cascade | Multi-waypoint 3D tracking & steady-state error | Settling time **~1.88 s**, Final Error = **0.0044 m** | ✅ PASS |
+| **Stage D** — Full Cascade | Multi-waypoint 3D tracking & steady-state error | Settling time **~1.87 s**, Final Error = **0.0006 m** | ✅ PASS |
 | **Stage E** — Isolated Trials | 24 scripted voice trials (reset to hover before each) | **24/24 Success (100.0%)** at 0.15 m tolerance | ✅ PASS |
-| **Stage E** — Chained Flight | 5-command continuous sequence (**no resets between legs**) | **5/5 Success (100.0%)**, Final Error = **0.0000 m**, Max Chain Error = **0.0044 m** | ✅ PASS |
-| **Stage E** — System Latency | End-to-end pipeline processing latency | Classify: 0.08 ms \| Trajectory: 0.03 ms \| Dispatch: 0.16 ms \| **Total: 0.27 ms** | ✅ PASS |
+| **Stage E** — Chained Flight | 5-command continuous sequence (**no resets between legs**) | **5/5 Success (100.0%)**, Final Error = **0.0000 m**, Max Chain Error = **0.022 m** | ✅ PASS |
+| **Stage E** — System Latency | End-to-end pipeline processing latency | Classify: 0.42 ms \| Trajectory (quintic Bezier + collision check): 34.8 ms \| Dispatch: 0.86 ms \| **Total: 36.1 ms** | ✅ PASS |
 
 ---
 
@@ -172,13 +172,67 @@ Full numbers, per-maneuver plots (CSV + PNG for all 67), and a combined chase+bi
 
 ---
 
+## Autonomous Navigation Among Moving Obstacles
+
+The drone can also fly **by itself**: a patrol loop around the plaza with four moving obstacles (two pillars, two spheres) plus the city's buildings and the obstacle tower, with no operator input and **no straight-line flight**. The east leg runs straight through the tower and every leg is crossed by a mover, so a straight line cannot complete it.
+
+```
+ patrol waypoints -> AvoidancePlanner (04_control/avoidance.py) -> reference (p, v, a)
+ moving obstacles ->   time-to-collision + committed swirl          |
+ city buildings   ->   (curves around obstacles)                    v
+                      SAME outer PD loop -> SAME identified-model inner loop -> MuJoCo
+```
+
+It is an autonomy layer **above** the Stage D cascade, not a replacement: the planner only produces the reference the cascade tracks (`FlightController.reference`, default `None`), so the "never bypass the cascade" rule still holds.
+
+**How the path curves.** A reference point is steered by a velocity command: goal attraction (with the part pointing into an obstacle removed), short-range repulsion, a **time-to-collision** term so fast crossers are dodged early, and a **committed tangential swirl** around each obstacle (the committed side is what bends the path and prevents left/right dithering). The side is chosen by probing which side has more free space, and a stall detector flips the sides once if opposing obstacles cancel. Acceleration and jerk are limited so the cascade can actually track it.
+
+**Results** (`05_voice_interface/run_autonomous.py`, 75 s patrol, scored against the *true* obstacle positions):
+
+| | Straight-line baseline (same cascade, planner ignores obstacles) | Autonomous (avoiding) |
+|---|---|---|
+| Development seeds 0-4 | **0/5** collision-free, min clearance **-0.757 m**, 43 s total inside obstacles | **5/5** collision-free, min clearance **0.284 m**, longest stall 1.0 s |
+| Never-seen seeds 100-129 | n/a | **29/30** collision-free (min clearance of the 29: 0.131 m, median 0.394 m) |
+| Path shape | leg length / chord = 1.06 | leg length / chord = **1.25** (curved) |
+| Progress | n/a | 6-9 waypoints per 75 s (about 1.8 laps) |
+
+Obstacle phases are set by the seed, so each seed is a different encounter. Seeds 100-129 were evaluated only after the planner and scenario were final. Outputs: [`autonomy_paths.png`](data/processed/autonomy/autonomy_paths.png) (top-down paths, clearance, speed, tilt vs the straight-line baseline), `autonomous_patrol.gif` (3D, with path trail; regenerate with `--render`), and `autonomy_results.csv`.
+
+**Honest limits.**
+- **The one failure (seed 104)** is a *double pinch*: two movers converge on the drone from different sides at once, there is no gap, and a reactive planner with no lookahead cannot foresee it (0.28 s of contact, 1.7 m/s emergency escape). A planner that predicts and waits would be needed.
+- **Scenario fairness is an assumption, not something the planner solves.** A mover must never seal a corridor (>= 0.85 m between a pillar's extreme and a building, >= 1.1 m for a sphere, enforced by `tests/test_autonomy.py`). Two earlier "failures" were this scenario flaw, not the planner; the planner cannot succeed where no passable gap exists.
+- **Perfect obstacle perception:** the planner is given obstacle position and velocity exactly (no sensor or noise model for perceiving obstacles). Yaw is fixed (see `flight.py`).
+- **Tuning history:** two planner iterations were made on seeds 0-54 after observing failures (a head-on stall at the tower, then a side-choice regression); the clean held-out figure is the 100-129 set.
+- **Stalls still happen briefly:** 8 of 30 held-out runs needed one stall-escape; the longest stall was 4.4 s.
+- The live viewer (`--live`, or `RUN_AUTONOMOUS.bat`) starts without errors but was not visually inspected.
+
+Run it: `.\.venv\Scripts\python.exe 05_voice_interface\run_autonomous.py --render` (stats + plot + GIF) or double-click `RUN_AUTONOMOUS.bat` (live 3D).
+
+## Closed-Loop Robustness (sensor noise, wind, payload mismatch)
+
+Everything above flies with ideal sensors on the exact identified mass. `05_voice_interface/run_robustness.py` stresses the *controller* instead, sweeping one disturbance at a time on a `forward` leg and comparing the original gated cascade against the same cascade plus two additions. Results: [`data/processed/robustness_plots/robustness.png`](data/processed/robustness_plots/robustness.png) and `robustness_results.csv`.
+
+| Disturbance | Original cascade fails at | With additions still passes (< 0.15 m) up to |
+|---|---|---|
+| Gyro white noise | 0.05 rad/s (0.36 m) | 2.0 rad/s (0.054 m) |
+| Gyro bias | 0.5 rad/s | 0.5 rad/s (0.011 m) |
+| Attitude noise | 0.01 rad (0.21 m) | 0.1 rad (0.018 m) |
+| Constant wind | 1 N (0.25 m) | 2 N (0.036 m); **fails at 3 N** |
+| Wind gust | passes (4 N) | passes (4 N) |
+| Payload mass error | ±10% (0.25 m) | ±20% (0.010 m); **fails at +50%** |
+
+**Why it failed, found by measurement, not assumed.** (1) Noise: yaw is the weakest axis (`K_M`=0.02 m vs arm 0.106 m), so a small yaw-gyro error drove rotors into 0 N / 6 N clipping on ~70% of steps and the lost collective thrust broke altitude hold. Yaw-only noise reproduced the whole failure (0.34 m) while roll/pitch-only noise did not (0.017 m). Fix: priority desaturation in the mixer that sheds yaw torque first (`mixer.inverse_mix_yaw_priority`). (2) Wind/payload: a PD law has a steady-state offset `a_dist/Kp` (0.1 kg extra = 0.245 m, matching the measured value). Fix: anti-windup integral action in `PositionController`, active only while the trajectory and the drone are both nearly at rest (integrating through a move overshot nominal legs; gate threshold swept 0.08–1.0 m/s).
+
+**Honest limits.** The integral's authority is clamped to 2 m/s², so disturbances beyond that (3 N wind, +50% payload) still fail. Nominal final error at 8 s is 0.009 m with the additions versus 0.0002 m without (both far inside tolerance). Realistic MEMS gyro noise is ~0.001–0.005 rad/s, roughly 10–40x below where the original cascade first failed. Both additions default **off** in the Stage D gate scripts (`run_cascade.py`, `run_inner_loop.py` are unchanged) and **on** in `FlightController` (`robust=True`); the full Stage E gates were re-run with them on (24/24, 5/5, preemption, 67/67).
+
 ## Latency Characterization & Verification
 
 In compliance with strict scientific rigor, latency is characterized with full transparency:
 
-1. **Scripted/Deterministic Benchmark (0.27 ms):**
-   - The reported **0.27 ms** end-to-end figure is measured across 24 randomized trials using `TextSource`.
-   - It strictly benchmarks algorithmic processing: fuzzy vocabulary classification (0.08 ms), trapezoidal trajectory calculation (0.03 ms), and cascade controller dispatch (0.16 ms).
+1. **Scripted/Deterministic Benchmark (~36 ms):**
+   - The reported **36.1 ms** end-to-end figure is the mean over 24 trials using `TextSource` (latest `run_trials.py` run).
+   - It strictly benchmarks algorithmic processing: fuzzy vocabulary classification (0.42 ms), trajectory planning (34.8 ms) and cascade controller dispatch (0.86 ms).
+   - Trajectory planning dominates since the planner became a curved quintic Bezier with a feasibility search and a building-collision check (it was a 0.03 ms trapezoid before). The feasibility check was vectorised from ~183 ms to ~7.5 ms standalone with identical planned durations; the in-trial figure is higher because it includes the collision check and carried-velocity boundary conditions. Still ~14x below the 0.5 s command-reversal budget (36 ms vs 500 ms).
    - This isolates control software overhead from hardware-dependent acoustic capture.
 
 2. **Live Acoustic Pipeline (`VoskSource`):**
@@ -228,12 +282,14 @@ Each stage validates gate criteria and generates empirical logs in `data/process
 .\.venv\Scripts\python.exe 05_voice_interface\run_preemption.py
 
 # Maneuver gauntlet: 67 scripted maneuvers, logs + per-maneuver plots + GIF
+.\.venv\Scripts\python.exe 05_voice_interface\run_autonomous.py --render
+.\.venv\Scripts\python.exe 05_voice_interface\run_robustness.py
 .\.venv\Scripts\python.exe run_gauntlet.py
 
 # Collect every plot/CSV/GIF above into results/ (matching results/RESULTS.md)
 .\.venv\Scripts\python.exe save_plots.py
 
-# Full Verification: Run entire unit & regression test suite (43 passed)
+# Full Verification: Run entire unit & regression test suite (96 passed)
 .\.venv\Scripts\python.exe -m pytest tests\
 ```
 

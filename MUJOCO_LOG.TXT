@@ -1,0 +1,16 @@
+WARNING Mon Sep 28 23:29:00 2026: Nan, Inf or huge value in CTRL at ACTUATOR 0. The simulation is unstable. Time = 0.0000.
+
+WARNING Mon Sep 28 23:29:02 2026: Nan, Inf or huge value in CTRL at ACTUATOR 0. The simulation is unstable. Time = 0.0000.
+
+WARNING Mon Sep 28 23:29:07 2026: Nan, Inf or huge value in CTRL at ACTUATOR 0. The simulation is unstable. Time = 0.0000.
+
+WARNING Mon Sep 28 23:29:09 2026: Nan, Inf or huge value in CTRL at ACTUATOR 0. The simulation is unstable. Time = 0.0000.
+
+WARNING Mon Sep 28 23:29:16 2026: Nan, Inf or huge value in CTRL at ACTUATOR 0. The simulation is unstable. Time = 0.0000.
+
+WARNING Mon Sep 28 23:29:20 2026: Nan, Inf or huge value in CTRL at ACTUATOR 0. The simulation is unstable. Time = 0.0000.
+
+WARNING Mon Sep 28 23:29:24 2026: Nan, Inf or huge value in CTRL at ACTUATOR 0. The simulation is unstable. Time = 0.0000.
+
+WARNING Mon Sep 28 23:31:09 2026: Nan, Inf or huge value in CTRL at ACTUATOR 0. The simulation is unstable. Time = 0.0000.
+

@@ -107,8 +107,12 @@ class VoskSource(_BaseSource):
     short silence gap, at which point the final transcript is classified."""
 
     def __init__(self, model_dir: str | None = None, sample_rate: int = 16000,
-                 silence_s: float = 0.4, device: int | None = None):
+                 silence_s: float = 0.4, device: int | None = None,
+                 restrict_grammar: bool = True, extra_words=()):
+        """extra_words: more words the restricted grammar should accept,
+        e.g. place names for "go to <place>" (places.PlaceBook.grammar_words)."""
         super().__init__()
+        import json
         import os
         model_dir = model_dir or os.environ.get("VOSK_MODEL_DIR")
         if not model_dir:
@@ -121,7 +125,13 @@ class VoskSource(_BaseSource):
         self._model = Model(model_dir)
         self._sample_rate = sample_rate
         self._silence_s = silence_s
-        self._rec = KaldiRecognizer(self._model, sample_rate)
+        if restrict_grammar:
+            from commands import asr_grammar
+            words = asr_grammar()
+            words = list(dict.fromkeys(words[:-1] + list(extra_words))) + words[-1:]   # keep [unk] last
+            self._rec = KaldiRecognizer(self._model, sample_rate, json.dumps(words))
+        else:
+            self._rec = KaldiRecognizer(self._model, sample_rate)
 
         # Resolve the device index HERE, in this process, right before
         # opening the stream - not from a number the caller looked up in a
