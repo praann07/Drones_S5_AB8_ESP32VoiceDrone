@@ -1,7 +1,7 @@
 # RESULTS — Voice-Controlled Quadrotor Navigation System
 
-**Run date:** 2026-09-08 | **Platform:** Windows / Python 3.13 / MuJoCo  
-**Test suite:** 34/34 passed | **Gauntlet:** 67/67 PASS (100%)
+**Run date:** 2026-10-19 | **Platform:** Windows / Python 3.13 / MuJoCo  
+**Test suite:** 96/96 passed | **Gauntlet:** 67/67 PASS (100%)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Stage | Command | Result |
 |---|---|:---:|
-| **Tests** | `pytest tests/` | ✅ 34/34 PASS |
+| **Tests** | `pytest tests/` | ✅ 96/96 PASS |
 | **Stage A** — Excitation | `run_excitation.py` | ✅ PASS |
 | **Stage B** — Identification | `run_identification.py` | ✅ PASS |
 | **Stage C** — Validation | `run_validation.py` | ✅ PASS |
@@ -34,16 +34,18 @@
 | **SINDy active terms** | 44 / 156 |
 | **Stage C diverged rollouts** | 0 / 7 (SINDy full envelope) |
 | **Stage D inner settling time** | 0.56 – 0.86 s |
-| **Stage D cascade settling time** | ~1.882 s |
-| **Stage D cascade final error** | 0.0044 m |
+| **Stage D cascade settling time** | ~1.868 s |
+| **Stage D cascade final error** | 0.0006 m |
 | **Stage E isolated trials** | 24 / 24 (100%) |
-| **Stage E chained legs** | 5 / 5 (100%), final error 0.0000 m |
-| **Preemption peak excursion** | 0.389 m (tower face at 2.30 m → 1.911 m clearance) |
-| **Preemption reversal latency** | 0.458 s (tol 0.5 s) |
-| **Latency: classify** | 0.106 ms |
-| **Latency: trajectory gen** | 0.020 ms |
-| **Latency: control dispatch** | 0.124 ms |
-| **Latency: total** | 0.250 ms |
+| **Stage E chained legs** | 5 / 5 (100%), final error 0.0000 m, max 0.022 m |
+| **Preemption peak excursion** | 0.259 m (tower face at 2.30 m → 2.041 m clearance) |
+| **Preemption reversal latency** | 0.422 s (tol 0.5 s) |
+| **Latency: classify** | 0.421 ms |
+| **Latency: trajectory gen** | 34.797 ms (quintic Bezier + collision check) |
+| **Latency: control dispatch** | 0.860 ms |
+| **Latency: total** | 36.078 ms |
+| **Robustness (see README)** | gyro noise to 2 rad/s, 1 N wind, ±20% payload: all < 0.06 m error (original cascade failed each) |
+| **Autonomous patrol (see README)** | avoiding: 5/5 dev seeds + 29/30 never-seen seeds collision-free; straight-line baseline 0/5 (min clearance -0.757 m) |
 
 ---
 
@@ -53,12 +55,12 @@
 
 | Command | Mean Err (m) | Settle (s) | Overshoot (m) | Att Err (deg) | Pass |
 |---|---|---|---|---|:---:|
-| forward | 0.0044 | 1.882 | 0.065 | 0.01 | 3/3 ✅ |
-| back    | 0.0044 | 1.882 | 0.000 | 0.01 | 3/3 ✅ |
-| left    | 0.0044 | 1.882 | 0.064 | 0.01 | 3/3 ✅ |
-| right   | 0.0044 | 1.882 | 0.000 | 0.01 | 3/3 ✅ |
-| up      | 0.0003 | 0.878 | 0.000 | 0.00 | 3/3 ✅ |
-| down    | 0.0003 | 0.878 | 0.000 | 0.00 | 3/3 ✅ |
+| forward | 0.0216 | 2.95 | 0.022 | 0.08 | 3/3 ✅ |
+| back    | 0.0216 | 2.95 | 0.022 | 0.08 | 3/3 ✅ |
+| left    | 0.0216 | 2.95 | 0.022 | 0.08 | 3/3 ✅ |
+| right   | 0.0216 | 2.95 | 0.022 | 0.08 | 3/3 ✅ |
+| up      | 0.0166 | 1.752 | 0.026 | 0.00 | 3/3 ✅ |
+| down    | 0.0166 | 1.752 | 0.026 | 0.00 | 3/3 ✅ |
 | hover   | 0.0000 | 0.000 | 0.000 | 0.00 | 3/3 ✅ |
 | stop    | 0.0000 | 0.000 | 0.000 | 0.00 | 3/3 ✅ |
 
@@ -72,17 +74,17 @@
 | Stairs: up→fwd→up→fwd→down→back→hover | 7 | 2 | ✅ 14/14 |
 | Full mix: left→up→right→down→fwd→back→hover | 7 | 2 | ✅ 14/14 |
 
-**38/38 legs PASS** — no resets between commands, max error 0.0044 m.
+**38/38 legs PASS** — no resets between commands, final error ≤ 0.0003 m on every sequence.
 
 ### Section 3 — Edge Cases (5/5 PASS)
 
 | Edge Case | Result | Notes |
 |---|---|---|
-| Rapid-fire (fwd 0.3s → left 6s) | ✅ PASS | Final err 0.0046 m |
-| Mid-move preemption (fwd 1s → back 6s) | ✅ PASS | Final err 0.0084 m |
-| Stop mid-move then resume | ✅ PASS | Final err 0.0047 m |
-| Down at lowest altitude (z=1.0→0.5m) | ✅ PASS | z_min=0.500 m, above floor |
-| Up at highest altitude (z=1.0→1.5m) | ✅ PASS | z_max=1.500 m, no runaway |
+| Rapid-fire (fwd 0.3s → left 6s) | ✅ PASS | Final err 0.0217 m |
+| Mid-move preemption (fwd 1s → back 6s) | ✅ PASS | Final err 0.0198 m |
+| Stop mid-move then resume | ✅ PASS | Final err 0.0157 m |
+| Down at lowest altitude (z=1.0→0.5m) | ✅ PASS | z_min=0.474 m, above floor |
+| Up at highest altitude (z=1.0→1.5m) | ✅ PASS | z_max=1.526 m, no runaway |
 
 ### Gauntlet Total: **67/67 PASS (100%)**
 
