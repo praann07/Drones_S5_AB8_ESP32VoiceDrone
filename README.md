@@ -11,7 +11,7 @@
   <img alt="Simulator" src="https://img.shields.io/badge/simulator-MuJoCo-orange">
   <img alt="Identification" src="https://img.shields.io/badge/identification-SINDy%20%2B%20DMDc-9C27B0">
   <img alt="SINDy R2" src="https://img.shields.io/badge/SINDy%20held--out%20R%C2%B2-0.9946-brightgreen">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-157%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-167%20passing-brightgreen">
   <img alt="Voice" src="https://img.shields.io/badge/voice-Vosk%20offline-blue">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-lightgrey">
 </p>
@@ -43,7 +43,7 @@ Runs in MuJoCo on a 1:10 scale model of the real campus, built from OpenStreetMa
 | **What it was checked against** | DMDc (a linear alternative), with held-out trials, 11 s rollouts, eigenvalues, sparsity and noise ablations |
 | **How it flies** | Outer position loop (standard physics) feeding an inner quaternion attitude loop whose gains are **calculated from the learned model**, not hand-tuned |
 | **How you command it** | Offline speech (Vosk) or typed text: 8 moves, `land`, and `go to <building>` for 31 named buildings |
-| **How well it works** | 24/24 voice trials, 5/5 chained, 67/67 maneuver gauntlet, braking in 0.92 s over 0.50 m, 157 automated tests passing |
+| **How well it works** | 24/24 voice trials, 5/5 chained, 67/67 maneuver gauntlet, braking in 0.92 s over 0.50 m, 167 automated tests passing |
 | **How it was stressed** | Sensor noise, wind, wrong payload mass, mid-flight command reversal, moving obstacles |
 
 ---
@@ -356,11 +356,11 @@ Double-click **`RUN.bat`** and pick a number:
 .\.venv\Scripts\python.exe 05_voice_interface\run_robustness.py     # noise, wind, payload
 .\.venv\Scripts\python.exe 05_voice_interface\run_autonomous.py --render   # moving obstacles
 .\.venv\Scripts\python.exe 05_voice_interface\record_demo_video.py  # the video above
-.\.venv\Scripts\python.exe -m pytest                                # 157 tests
+.\.venv\Scripts\python.exe -m pytest                                # 167 tests
 ```
 `REBUILD_RESULTS.bat` runs the whole chain and collects every plot into `results/`.
 
-### What the 157 tests cover
+### What the 167 tests cover
 
 | Test file | Tests | Checks |
 |---|---|---|
@@ -375,6 +375,8 @@ Double-click **`RUN.bat`** and pick a number:
 | `test_identification_physics.py` | 6 | Learned coefficients match simulator truth within 2-6% |
 | `test_minimap.py`, `test_campus.py`, `test_web_sim_parity.py` | 11 | Map window, campus scene, browser simulator parity |
 | `test_status_graphs.py` | 7 | Live flight-status graphs: sampling rate, values equal the controller state, events, pause, CSV |
+| `test_wall_graze.py` | 4 | The drone may not slide along a wall close enough to touch it (clamp sweeps the margin, flight never tips over) |
+| `test_turn_trajectory.py` | 6 | A change of direction sweeps a rounded corner (speed never drops, no velocity jump, acceleration limits kept) |
 | `test_scene_physics_inert.py`, `test_reproducibility.py` | 4 | Visual layers add no physics; seeds reproduce across processes |
 
 ### Rebuild the campus
@@ -398,7 +400,7 @@ Double-click **`RUN.bat`** and pick a number:
 ├── 04_control/                quaternion controller, position loop, mixer, trajectories,
 │                              route planner, avoidance planner
 ├── 05_voice_interface/        voice input, commands, flight wrapper, demo, trials, recording
-├── tests/                     157 automated tests
+├── tests/                     167 automated tests
 ├── results/                   plots, data and the gauntlet summary (RESULTS.md)
 ├── docs/                      PRD, TDD, design flow, codebase guide, images, recordings
 ├── web/                       browser simulator (localhost only)

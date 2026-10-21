@@ -33,7 +33,7 @@ CAMPUS_SCENE = HERE / "scene_campus.xml"
 class CityWorld:
     name = "city"
 
-    def clamp(self, p0, p1):
+    def clamp(self, p0, p1, sweep: bool = True):
         return city.clamp_target_to_safe_zone(p0, p1)
 
     def path_collides(self, traj) -> bool:
@@ -134,7 +134,7 @@ class CampusWorld:
         self._places = {b["name"]: np.asarray(b["footprint"], dtype=float)
                         for b in data["buildings"] if not b["name"].startswith("building_")}
 
-    def clamp(self, p0, p1, margin: float = SAFETY_MARGIN_M):
+    def clamp(self, p0, p1, margin: float = SAFETY_MARGIN_M, sweep: bool = True):
         p0 = np.asarray(p0, dtype=float)
         p1 = np.asarray(p1, dtype=float)
         d = p1 - p0
@@ -149,7 +149,32 @@ class CampusWorld:
             t = pr.segment_entry(p0, d)
             if t is not None:
                 best_t = min(best_t, max(0.0, t - margin / seg))
+        if sweep:
+            best_t = min(best_t, self._graze_stop(p0, d, seg, margin))
         return p1.copy() if best_t >= 1.0 - 1e-9 else p0 + best_t * d
+
+    def _graze_stop(self, p0, d, seg: float, margin: float, step_m: float = 0.05) -> float:
+        """Parameter t in [0,1] of the first point of the flight p0 + t d that
+        has come within `margin` of a wall it is getting closer to. The entry
+        test above only stops a flight that would ENTER a building, so a drone
+        sliding along an angled wall passed a few centimetres from it - and
+        the 0.34 m wide hull touched, tipped over and pinned itself. A flight
+        that starts inside the margin may still move away or along a wall at
+        constant distance, only getting closer stops it."""
+        ts = np.linspace(0.0, 1.0, max(2, int(seg / step_m) + 1))
+        pts = p0 + ts[:, None] * d
+        lo = pts.min(axis=0)[:2] - margin
+        hi = pts.max(axis=0)[:2] + margin
+        stop = 1.0
+        for pr in self.prisms:
+            if np.any(pr.hi < lo) or np.any(pr.lo > hi):
+                continue
+            dist = (pr.normals @ pts[:, :2].T - pr.offsets[:, None]).max(axis=0)
+            below_roof = pts[:, 2] <= pr.height + DRONE_RADIUS_M
+            bad = below_roof & (dist < margin) & (dist < dist[0] - 1e-3)
+            if bad.any():
+                stop = min(stop, float(ts[int(np.argmax(bad))]))
+        return stop
 
     def path_collides(self, traj, margin: float = SAFETY_MARGIN_M,
                       radius: float = DRONE_RADIUS_M, samples: int = 60) -> bool:

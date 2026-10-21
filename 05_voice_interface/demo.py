@@ -315,7 +315,7 @@ def build_dashboard():
     fig._buttons = buttons  # noqa: SLF001
 
     import matplotlib
-    if "agg" not in matplotlib.get_backend().lower():
+    if matplotlib.get_backend().lower() != "agg":
         fig.show()
     return fig, (ax_att, ax_pos, ax_ctrl), (line_att, line_pos, line_ctrl), status_text
 

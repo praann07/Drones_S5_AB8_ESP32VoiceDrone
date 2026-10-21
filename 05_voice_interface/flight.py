@@ -40,8 +40,8 @@ for _p in ("01_simulation", "01_simulation/models", "04_control",
 from sim_driver import C_ROT, C_TRANS, SCENE_PATH  # noqa: E402
 from controller import QuaternionController, gains_from_identified_model  # noqa: E402
 from position_controller import PositionController, KI_POS_DEFAULT  # noqa: E402
-from trajectory import (QuinticBezierTrajectory, CruiseTrajectory, PathTrajectory,  # noqa: E402
-                        MAX_ACCEL_MPS2)
+from trajectory import (QuinticBezierTrajectory, CruiseTrajectory, CruiseTurnTrajectory,  # noqa: E402
+                        PathTrajectory, MAX_ACCEL_MPS2)
 from route_planner import RoutePlanner, CLEARANCE_M  # noqa: E402
 from commands import target_offset, parse_goto, GOTO_COMMAND, LAND_COMMAND  # noqa: E402
 from sindy_fit import SINDyModel  # noqa: E402
@@ -408,7 +408,10 @@ class FlightController:
                 p1_raw[2] = max(p1_raw[2], self.surface[0] + self.foot_z + TAKEOFF_CLEARANCE_M)
             if self.continuous and taking_off and command in CONTINUOUS_COMMANDS:
                 self._resume = lambda c=command: self.dispatch(c, measure_traj_latency=False)
-            p1 = self.world.clamp(p0, p1_raw)
+            # braking ("stop"/"hover") cannot be shortened below the stopping
+            # distance, so it only gets the enter-a-building check
+            braking = self.continuous and command in ("stop", "hover") and not taking_off
+            p1 = self.world.clamp(p0, p1_raw, sweep=not braking)
             if not np.allclose(p1, p1_raw, atol=1e-6):
                 print(f"[safety] {command!r} clamped - target would enter a "
                       f"building; stopping short at {p1.round(3).tolist()} "
@@ -441,6 +444,14 @@ class FlightController:
             n = float(np.linalg.norm(d))
             u0 = float(v0 @ d / n) if n > 1e-9 else 0.0
             traj = CruiseTrajectory(start, p1, u0=u0)
+            # A change of direction keeps the sideways velocity and sweeps a
+            # rounded corner instead of an exact right angle. Campus world
+            # only (path_collides there samples positions), and only if the
+            # arc clears every building, else the straight line stays.
+            if self.world.name == "campus":
+                turn = CruiseTurnTrajectory(start, p1, v0)
+                if turn.is_turn and turn.settles and not self.world.path_collides(turn):
+                    traj = turn
         else:
             traj = QuinticBezierTrajectory(p0, p1, v0=v0, a0=a0)
         if not cruise and self.world.path_collides(traj):

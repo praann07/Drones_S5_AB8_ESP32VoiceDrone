@@ -220,7 +220,7 @@ class StatusGraphs:
             except Exception:
                 pass
         import matplotlib
-        if show and "agg" not in matplotlib.get_backend().lower():
+        if show and matplotlib.get_backend().lower() != "agg":
             self.fig.show()
 
     # -- recording (cheap, called every frame) ------------------------------

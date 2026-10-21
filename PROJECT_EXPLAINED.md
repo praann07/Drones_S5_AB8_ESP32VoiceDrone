@@ -638,7 +638,7 @@ Double-click **`RUN.bat`** in the project folder and pick a number:
 | **1** | Flies the drone live on the campus. Speak or type. A commands guide window stays open. |
 | **2** | After flying: draws 2D and 3D graphs of the flight you just did. |
 | **3** | Prints the drone's mass, inertia, gains and learned model. |
-| **4** | Runs the 157 automated tests. |
+| **4** | Runs the 167 automated tests. |
 | **5** | A browser version on your own computer only (localhost). |
 | **6** | Rebuilds every result and plot (several minutes). |
 
@@ -737,7 +737,7 @@ Being honest is part of the result.
 │                                mixer.py, trajectory.py, route_planner.py, avoidance.py
 ├── 05_voice_interface/          Stage E: commands.py, voice_input.py, flight.py, demo.py,
 │                                run_trials.py, record_demo_video.py
-├── tests/                       157 automated tests
+├── tests/                       167 automated tests
 ├── results/                     plots, data, RESULTS.md
 ├── docs/                        design documents, images, recordings
 ├── web/                         the browser simulator

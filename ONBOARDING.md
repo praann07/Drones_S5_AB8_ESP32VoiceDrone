@@ -5,7 +5,7 @@
 
 For the code-level map (module wiring, runbooks, debugging table), see [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md).
 
-All numbers below were re-measured on 2026-10-19 (150/157 tests as of 2026-10-21, 24/24 trials, 5/5 chained, preemption, 67/67 gauntlet, robustness sweep). The full history of decisions and mistakes is in [`CLAUDE.md`](CLAUDE.md).
+All numbers below were re-measured on 2026-10-19 (167/167 tests as of 2026-10-22, 24/24 trials, 5/5 chained, preemption, 67/67 gauntlet, robustness sweep). The full history of decisions and mistakes is in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -64,7 +64,7 @@ pip install -r requirements.txt
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
-Expected: `157 passed`.
+Expected: `167 passed`.
 
 **Regenerate the evidence stage by stage** (data files in `data/raw/` are produced by the first command):
 ```powershell
@@ -99,7 +99,7 @@ Or double-click `REBUILD_RESULTS.bat` to run everything and log each step to `re
 | `04_control/position_controller.py`, `trajectory.py` | Outer loop and planner (standard physics) |
 | `04_control/mixer.py` | Torque-to-rotor mapping, including yaw-priority desaturation |
 | `05_voice_interface/flight.py` | Real-time cascade driving MuJoCo through the IMU sensors |
-| `tests/` | 157 tests: physics recovery, mixer, reproducibility, scene-is-physics-inert, voice, natural motion, robustness, autonomy |
+| `tests/` | 167 tests: physics recovery, mixer, reproducibility, scene-is-physics-inert, voice, natural motion, robustness, autonomy |
 | `04_control/avoidance.py`, `01_simulation/models/obstacles.py`, `05_voice_interface/run_autonomous.py` | Autonomous patrol among moving obstacles (section 6) |
 | `docs/PRD.md`, `docs/TDD.md` | Requirements and the technical design decisions (quaternion constraint handling, DMDc regime, validation order) |
 

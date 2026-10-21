@@ -167,6 +167,77 @@ class CruiseTrajectory:
 MAX_LATERAL_ACCEL_MPS2 = 0.8   # slows down for bends: v <= sqrt(a_lat / curvature)
 
 
+class CruiseTurnTrajectory:
+    """CruiseTrajectory that keeps the velocity the drone already has.
+
+    CruiseTrajectory starts the new line at the speed the drone has ALONG it
+    and drops the sideways part, so "forward" then "left" is an exact right
+    angle with a stop-and-go at the corner. Here the sideways velocity w0 is
+    carried and bled off smoothly instead (raised cosine over T seconds):
+
+        p(t) = cruise(t) + w0 * W(t),   v(t) = cruise'(t) + w0 * s(t)
+        s(t) = (1 + cos(pi t / T)) / 2,  W(t) = integral of s,  W(inf) = T / 2
+
+    T = pi |w0| / (2 a_lat) keeps the sideways acceleration at or below a_lat,
+    so the drone sweeps a rounded corner of radius about v^2 / a_lat and then
+    runs on a lane shifted by |w0| T / 2 = pi |w0|^2 / (4 a_lat) in the
+    direction it was heading. Position, velocity and acceleration stay
+    continuous (up to the existing along-line profile)."""
+
+    MIN_SIDEWAYS_MPS = 0.15      # below this the corner is not worth rounding
+
+    def __init__(self, p0: np.ndarray, p1: np.ndarray, v0: np.ndarray,
+                 v_max: float = MAX_VELOCITY_MPS, a_max: float = MAX_ACCEL_MPS2,
+                 a_lat: float = MAX_LATERAL_ACCEL_MPS2):
+        self.p0 = np.asarray(p0, dtype=float)
+        self.p1 = np.asarray(p1, dtype=float)
+        delta = self.p1 - self.p0
+        D = float(np.linalg.norm(delta))
+        d = delta / D if D > 1e-9 else np.zeros(3)
+        v0 = np.array(v0, dtype=float)
+        v0[2] = 0.0                                      # altitude is handled by the line itself
+        u0 = max(float(v0 @ d), 0.0)
+        self._w0 = v0 - u0 * d
+        w = float(np.linalg.norm(self._w0))
+        self.T = np.pi * w / (2.0 * a_lat) if w > 1e-9 else 0.0
+        self._cruise = CruiseTrajectory(self.p0, self.p1, u0=u0, v_max=v_max, a_max=a_max)
+        self.distance = self._cruise.distance
+        self.direction = self._cruise.direction
+        self.t_total = self._cruise.t_total
+        self.sideways_mps = w
+
+    @property
+    def is_turn(self) -> bool:
+        return self.sideways_mps >= self.MIN_SIDEWAYS_MPS
+
+    @property
+    def settles(self) -> bool:
+        """The leg is long enough for the sideways velocity to reach zero before it ends."""
+        return self.t_total >= self.T + 0.5
+
+    def _s(self, t: float):
+        """(W, s, ds/dt) of the sideways velocity decay at time t."""
+        if self.T <= 1e-9:
+            return 0.0, 0.0, 0.0
+        if t >= self.T:
+            return self.T / 2.0, 0.0, 0.0
+        x = np.pi * t / self.T
+        return (0.5 * (t + self.T / np.pi * np.sin(x)), 0.5 * (1.0 + np.cos(x)),
+                -np.pi / (2.0 * self.T) * np.sin(x))
+
+    def position(self, t: float) -> np.ndarray:
+        t = min(max(t, 0.0), self.t_total)
+        return self._cruise.position(t) + self._w0 * self._s(t)[0]
+
+    def velocity(self, t: float) -> np.ndarray:
+        t = min(max(t, 0.0), self.t_total)
+        return self._cruise.velocity(t) + self._w0 * self._s(t)[1]
+
+    def acceleration(self, t: float) -> np.ndarray:
+        t = min(max(t, 0.0), self.t_total)
+        return self._cruise.acceleration(t) + self._w0 * self._s(t)[2]
+
+
 class PathTrajectory:
     """Smooth flight along a list of waypoints (e.g. a route_planner route).
 

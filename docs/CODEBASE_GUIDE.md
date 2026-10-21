@@ -3,7 +3,7 @@
 **Audience:** course grader / senior engineer who wants to read the code, not just the results.
 **Companion docs:** [`ONBOARDING.md`](../ONBOARDING.md) (what is claimed and how to check it), [`CONTROLLER_AND_IMU_EXPLAINED.md`](../CONTROLLER_AND_IMU_EXPLAINED.md) (plain-English controller/IMU walkthrough), [`CLAUDE.md`](../CLAUDE.md) (decision and bug history). This file is the code map: where things live, how data flows, how to change things safely, and what breaks.
 
-Facts below were checked against the working tree on 2026-10-21 (Python 3.13, 157 tests collected).
+Facts below were checked against the working tree on 2026-10-21 (Python 3.13, 167 tests collected).
 
 ---
 
@@ -67,7 +67,7 @@ Autonomy mode swaps one box: `FlightController.reference = AvoidancePlanner(...)
 | `03_validation/` | One-step → rollout → eigenvalues → ablations | `rollout.py`, `run_validation.py` (writes `data/processed/sindy_fitted_model.npz`) |
 | `04_control/` | The cascade | `controller.py`, `position_controller.py`, `mixer.py`, `trajectory.py`, `avoidance.py`, `closed_loop_sim.py`, `metrics.py` |
 | `05_voice_interface/` | Voice, flight wrapper, demos, studies | `flight.py`, `commands.py`, `voice_input.py`, `demo.py`, `run_trials.py`, `run_preemption.py`, `run_robustness.py`, `run_autonomous.py` |
-| `tests/` | 157 tests | see §6 |
+| `tests/` | 167 tests | see §6 |
 | `results/` | Mirrored evidence gallery | rebuilt by `save_plots.py` |
 
 **Import convention (surprising):** the numbered folders are not Python packages. Scripts do `sys.path.insert(0, ROOT / "<folder>")` and import by bare module name (`from controller import ...`). Do not add `__init__.py` and do not rename a module without grepping for its bare name. Module names must stay unique across folders.

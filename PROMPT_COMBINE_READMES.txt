@@ -22,7 +22,7 @@ RULES FOR CONFLICTS
   * SINDy held-out R-squared 0.9946, one-step NRMSE 0.0786. DMDc near hover R-squared 0.9926, NRMSE 0.0825, and a one-step NRMSE of about 0.70 outside hover (not an R-squared).
   * Rollouts: SINDy 0 of 7 diverged over 11 s.
   * Braking from 1.0 m/s: rest in 0.92 s over 0.50 m.
-  * 157 automated tests; 24/24 voice trials; 5/5 chained; 67/67 gauntlet.
+  * 167 automated tests; 24/24 voice trials; 5/5 chained; 67/67 gauntlet.
   * There is NO Kalman filter and NO controllability/reachability analysis. Do not claim them. List them under future work.
   * DMDc is valid near hover only. Results are simulation only. Building heights are estimated.
 - Do not invent numbers, results, features, file names, links, citations or team members. If something is missing, leave it out; do not guess.

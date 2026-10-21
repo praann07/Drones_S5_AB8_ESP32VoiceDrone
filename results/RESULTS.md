@@ -1,7 +1,7 @@
 # RESULTS — Voice-Controlled Quadrotor Navigation System
 
 **Run date:** 2026-10-19 | **Platform:** Windows / Python 3.13 / MuJoCo  
-**Test suite:** 150/157 passed | **Gauntlet:** 67/67 PASS (100%)
+**Test suite:** 167/167 passed | **Gauntlet:** 67/67 PASS (100%)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Stage | Command | Result |
 |---|---|:---:|
-| **Tests** | `pytest tests/` | ✅ 157/157 PASS |
+| **Tests** | `pytest tests/` | ✅ 167/167 PASS |
 | **Stage A** — Excitation | `run_excitation.py` | ✅ PASS |
 | **Stage B** — Identification | `run_identification.py` | ✅ PASS |
 | **Stage C** — Validation | `run_validation.py` | ✅ PASS |
