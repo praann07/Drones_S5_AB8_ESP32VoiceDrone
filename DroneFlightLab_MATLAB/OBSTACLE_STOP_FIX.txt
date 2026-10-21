@@ -1,0 +1,7 @@
+Obstacle stop fix:
+- Configured barriers and building footprints are treated as conservative
+  horizontal no-fly safety regions while airborne.
+- Motion segments are checked before the simulated position is updated.
+- If a candidate step enters a safety region, the drone remains at its last
+  safe position and simulated velocity is set to zero.
+- No automatic retreat or detour is commanded.
