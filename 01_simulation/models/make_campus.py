@@ -242,6 +242,16 @@ def choose_spawn(buildings) -> np.ndarray:
     return best
 
 
+def load_building_shifts() -> dict:
+    """Per-building move (east, north, real metres) that puts each outline on
+    its roof in the satellite photo; written by align_buildings.py. Empty
+    when the file is absent, which leaves every building at its OSM position."""
+    path = OUT_DIR / "building_shifts.json"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))["shifts"]
+
+
 def build():
     buildings, roads, campus = load_osm()
     spawn = choose_spawn(buildings)
@@ -249,14 +259,16 @@ def build():
     def to_world(pts):
         return (np.asarray(pts) - spawn) / SCALE
 
-    world = []
+    shifts = load_building_shifts()
+    world, raw_pts = [], []
     for osm_id, tags, pts in buildings:
         poly_real = clean_polygon(pts)
         if len(poly_real) < 3:
             continue
         area = abs(_area2(poly_real)) / 2.0
         h = estimate_height_m(tags, area) / SCALE
-        poly = to_world(poly_real)
+        raw_pts.append(to_world(poly_real))           # the floor extent stays tied to the raw outlines
+        poly = to_world(poly_real + np.array(shifts.get(str(osm_id), (0.0, 0.0))))
         parts = [p for p in convex_parts(poly) if abs(_area2(p)) / 2.0 > 1e-4]
         world.append({"name": tags.get("name") or f"building_{osm_id}", "osm_id": osm_id,
                       "height": round(h, 4), "colour": colour(tags),
@@ -265,7 +277,7 @@ def build():
     roads_w = [(t["highway"], to_world(p)) for t, p in roads]
     campus_w = to_world(campus) if campus is not None else None
 
-    allpts = np.vstack([np.array(b["footprint"]) for b in world])   # roads run past the campus; crop to buildings
+    allpts = np.vstack(raw_pts)   # roads run past the campus; crop to buildings
     lo = allpts.min(axis=0) - MARGIN_M
     hi = allpts.max(axis=0) + MARGIN_M
     # square floor centred on the features keeps the texture aspect simple

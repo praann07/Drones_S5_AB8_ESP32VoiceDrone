@@ -134,7 +134,7 @@ happened, was checked, and got saved to one file
 | `run_trials.py`, `run_preemption.py` | Headless (no window needed) scripted test flights — used to generate the 24/5/mid-flight-override evidence numbers, not for interactive use. |
 | `render_offscreen.py` | Flies a scripted sequence with no display and saves it as a GIF (chase + bird's-eye side by side). |
 | `plot_2d_telemetry.py`, `plot_3d_trajectory.py` | Standalone "after the flight" graphs, read from whatever was most recently logged. |
-| `print_commands_guide.py` | Prints the on-screen command reference used by `RUN_EVERYTHING.bat`. |
+| `print_commands_guide.py` | Prints the on-screen command reference used by `RUN.bat`. |
 
 ---
 
@@ -224,20 +224,19 @@ current position.
 
 ## 5. What actually happens when you double-click a launcher
 
-### `RUN_EVERYTHING.bat` (fly, step 1 of 2)
-1. Checks your Python virtual environment exists.
-2. Checks whether the Vosk voice-recognition model folder is present — if
-   yes, launches with your microphone; if not, falls back to typing
-   commands instead (never just crashes).
-3. Opens 3 separate windows: the **Commands Guide** (`print_commands_guide.py`,
-   stays open), the **3D Demo** (`demo.py` — this is where you
-   speak/type/click), and the **Test Suite** (runs all 43 automated tests
-   in the background, proving the code still works).
+### `RUN.bat` (the one launcher)
+Double-click it and pick a number. Option 1 (fly) does this:
+1. Check your Python virtual environment exists.
+2. Check whether the Vosk voice-recognition model folder is present: if yes,
+   launch with your microphone; if not, fall back to typing commands.
+3. Open the **Commands Guide** (`print_commands_guide.py`, stays open) and the
+   **3D Demo** (`demo.py`, where you speak, type or click).
 
-### `SHOW_RESULTS.bat` (see results, step 2 of 2)
-Run this AFTER you've flown at least once. Opens 2 windows
+Option 2 (run it AFTER you have flown at least once) opens 2 windows
 (`plot_2d_telemetry.py`, `plot_3d_trajectory.py`) reading whatever you
-just flew — not old data — because of the live-logging in section 6.
+just flew, not old data, because of the live-logging in section 6.
+Option 3 shows the drone parameters, 4 runs the test suite, 5 opens the
+localhost browser simulator, 6 rebuilds all results.
 
 ### `REBUILD_RESULTS.bat` (rebuild everything from scratch)
 This is the "prove it all still works, from zero" button. It re-runs
@@ -267,7 +266,7 @@ never gets written to directly by the pipeline scripts.
 **The live-flight logging specifically**: `demo.py`'s `LiveFlightLogger`
 picks one filename the moment you start flying, then rewrites that same
 file every single time you finish a command — not just when you close the
-window. So if you check `SHOW_RESULTS.bat` mid-flight, you see everything
+window. So if you open the results (RUN.bat option 2) mid-flight, you see everything
 you've done SO FAR, live-updating, not stale data from days ago.
 
 ---
@@ -437,8 +436,7 @@ results/                the curated, presentation-ready copy of everything
   data/README.md            explains every raw CSV/parquet column
   logs/README.md            explains every raw console log
 
-RUN_EVERYTHING.bat        fly (step 1)
-SHOW_RESULTS.bat           see your flight's results (step 2)
+RUN.bat                   the one launcher: fly, results, tests, rebuild
 REBUILD_RESULTS.bat         rebuild the ENTIRE results/ folder from scratch
 CONTROLLER_AND_IMU_EXPLAINED.md   deep dive on the two topics being graded
 ```

@@ -116,7 +116,7 @@ def test_city_buildings_clear_flight_corridor():
 
 def test_command_vocabulary_matches_synonyms():
     """Regression test for print_commands_guide.py (the presentation-day
-    commands guide, RUN_EVERYTHING.bat): command_vocabulary() must return
+    commands guide, RUN.bat): command_vocabulary() must return
     every fixed command, and its synonyms must match what classify()
     actually accepts - a guide that drifts from the real vocabulary would
     be worse than no guide at all."""

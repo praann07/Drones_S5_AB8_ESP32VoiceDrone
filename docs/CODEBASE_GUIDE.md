@@ -3,7 +3,7 @@
 **Audience:** course grader / senior engineer who wants to read the code, not just the results.
 **Companion docs:** [`ONBOARDING.md`](../ONBOARDING.md) (what is claimed and how to check it), [`CONTROLLER_AND_IMU_EXPLAINED.md`](../CONTROLLER_AND_IMU_EXPLAINED.md) (plain-English controller/IMU walkthrough), [`CLAUDE.md`](../CLAUDE.md) (decision and bug history). This file is the code map: where things live, how data flows, how to change things safely, and what breaks.
 
-Facts below were checked against the working tree on 2026-10-20 (Python 3.13.15, 96 tests collected).
+Facts below were checked against the working tree on 2026-10-21 (Python 3.13, 150 tests collected).
 
 ---
 
@@ -67,7 +67,7 @@ Autonomy mode swaps one box: `FlightController.reference = AvoidancePlanner(...)
 | `03_validation/` | One-step → rollout → eigenvalues → ablations | `rollout.py`, `run_validation.py` (writes `data/processed/sindy_fitted_model.npz`) |
 | `04_control/` | The cascade | `controller.py`, `position_controller.py`, `mixer.py`, `trajectory.py`, `avoidance.py`, `closed_loop_sim.py`, `metrics.py` |
 | `05_voice_interface/` | Voice, flight wrapper, demos, studies | `flight.py`, `commands.py`, `voice_input.py`, `demo.py`, `run_trials.py`, `run_preemption.py`, `run_robustness.py`, `run_autonomous.py` |
-| `tests/` | 96 tests | see §6 |
+| `tests/` | 150 tests | see §6 |
 | `results/` | Mirrored evidence gallery | rebuilt by `save_plots.py` |
 
 **Import convention (surprising):** the numbered folders are not Python packages. Scripts do `sys.path.insert(0, ROOT / "<folder>")` and import by bare module name (`from controller import ...`). Do not add `__init__.py` and do not rename a module without grepping for its bare name. Module names must stay unique across folders.
@@ -145,8 +145,8 @@ Run: `.\.venv\Scripts\python.exe -m pytest` (about 17 s just to collect; full ru
 | Controller state lags by one step (small errors, 3 tests fail) | Sensors read right after `mj_step()` are pre-integration | `step()` ends with `mj_forward()`; keep it |
 | Black or empty viewer / GIF | Loaded `quad.xml` instead of `scene.xml` | Use `SCENE_PATH`; open the output image to check, do not trust console output |
 | Drone stops short of a commanded waypoint, log shows `[safety] ... clamped` | Target would enter a building | Intended. See `city.clamp_target_to_safe_zone` |
-| Demo buttons or plots do nothing | Matplotlib backend silently resolved to `Agg`; or the window lacks OS keyboard focus | Launch via `RUN_EVERYTHING.bat` (real console); use the dashboard buttons, not hotkeys |
-| Dashboard plots show old flights | Plots read the newest `voice_sessions/chained_*.parquet` by mtime | Fly first, then `SHOW_RESULTS.bat` |
+| Demo buttons or plots do nothing | Matplotlib backend silently resolved to `Agg`; or the window lacks OS keyboard focus | Launch via `RUN.bat` (real console); use the dashboard buttons, not hotkeys |
+| Dashboard plots show old flights | Plots read the newest `voice_sessions/chained_*.parquet` by mtime | Fly first, then `RUN.bat` option 2 |
 | Rotors saturate at 0 / 6 N, thrust lost under noise | Yaw is about 5x costlier in rotor headroom (`K_M` 0.02 vs `ARM` 0.106) | `robust=True` uses `inverse_mix_yaw_priority` |
 | `.bat` aborts with `. was unexpected at this time.` | Unescaped `(` or `)` in text inside an `if/else` block | Remove or escape the parentheses |
 | Voice mode silently not used | No `vosk-model-small-en-us-0.15/` folder (not in repo) | Download from alphacephei.com/vosk/models; otherwise typed-command mode is used |

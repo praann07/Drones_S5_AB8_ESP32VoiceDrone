@@ -1,354 +1,348 @@
-# Voice-Controlled Quadrotor Navigation System (Data-Driven Attitude Identification)
+# Voice-Controlled Quadrotor with a Data-Driven Attitude Loop
 
-**Course:** Data-Driven Control of Drones  
-**Status:** All Verification Gates Passed (Stages A → E) — Verified in [`CLAUDE.md`](CLAUDE.md)  
-**Physics Simulator:** MuJoCo 6-DOF Rigid-Body Dynamics (`quad.xml`, `scene.xml`)  
-**Identification:** SINDy (Sparse Identification of Nonlinear Dynamics) on the drone's rotational dynamics  
-**Control Architecture:** Quaternion Cascaded Control (Newtonian Outer Loop → SINDy-Derived Inner Loop)
+**Say "forward", "stop", or "go to the library". A simulated drone flies there on a controller built from an equation it learned from its own flight data.**
+
+Course project for *Data Driven Control of Drones* (Amrita Vishwa Vidyapeetham, Coimbatore). Runs in MuJoCo on a 1:10 scale model of the real campus, built from OpenStreetMap building outlines and a satellite photo.
+
+[![Campus demo: take-off, cruise, stop, turn, routed flight, landing](docs/recordings/campus_demo.gif)](docs/recordings/campus_demo.mp4)
+
+*31-second recording of the campus demo (click for the MP4). Left: chase camera. Right: bird's-eye camera. Bottom: live speed trace. Every "stop" brings the drone to rest in 0.92 s over 0.50 m, with altitude held to within 2 cm. Recorded by [`record_demo_video.py`](05_voice_interface/record_demo_video.py).*
 
 ---
 
-## Abstract
+## At a glance
 
-Course projects in data-driven drone control commonly suffer from one of two failure modes: either an offline speech/UI layer is grafted onto textbook physics control without empirical system identification, or system identification is conducted in a Jupyter notebook without ever stabilizing closed-loop flight in a 3D simulation.
+| | |
+|---|---|
+| **What was learned from data** | The drone's rotational dynamics: SINDy keeps **44 of 156** candidate terms and predicts held-out data with **R² = 0.9946** |
+| **What it was checked against** | DMDc (a linear alternative), with held-out trials, 11 s rollouts, eigenvalues, sparsity and noise ablations |
+| **How it flies** | Outer position loop (standard physics) feeding an inner quaternion attitude loop whose gains are **calculated from the learned model**, not hand-tuned |
+| **How you command it** | Offline speech (Vosk) or typed text: 8 moves, `land`, and `go to <building>` for 31 named buildings |
+| **How well it works** | 24/24 voice trials, 5/5 chained, 67/67 maneuver gauntlet, braking in 0.92 s over 0.50 m, 150 automated tests passing |
+| **How it was stressed** | Sensor noise, wind, wrong payload mass, mid-flight command reversal, moving obstacles |
 
-This project bridges that divide through a strict, principled architectural separation: **only the inner attitude loop is identified from data.** Moving in a straight line under a thrust vector is just Newton's second law — a plain double integrator with nothing for a data-driven algorithm to discover. Rotation is different: it has real nonlinear aerodynamics, cross-coupling between axes, and quaternion-constrained kinematics — genuinely worth identifying from data, which is exactly what this project does.
+---
 
-The inner-loop attitude controller's gains are **analytically derived** — calculated directly from the identified SINDy model's own physics — not hand-tuned by trial and error. The complete system runs end-to-end: spoken voice commands drive world-frame waypoints, a Newtonian outer loop generates smooth trajectories and desired attitude streams, the SINDy-derived inner controller commands four rotor thrusts in MuJoCo physics, and flight telemetry is streamed live to a mission-control HUD beside the 3D viewport.
+## 1. Objective
+
+Many drone-control projects fail in one of two ways. Either a speech interface is attached to textbook physics with no identification step, or the dynamics are identified in a notebook and never flown in closed loop.
+
+This project closes that gap. The goal is a **complete, validated chain** from raw simulated flight data to a spoken command moving a drone, where the identified model is the thing the controller is built on.
+
+**One design decision shapes everything.** Only the **inner attitude loop** is identified from data. Flying in a straight line under a thrust vector is Newton's second law, a plain double integrator with nothing for a data-driven method to discover. Rotation is different: it has drag, cross-axis coupling and quaternion constraints, which is worth learning from data. So the outer position loop is deliberately standard physics (see [`docs/TDD.md`](docs/TDD.md) §7b).
+
+---
+
+## 2. System overview
 
 ```
- spoken command ("forward", "back", "left", "right", "up", "down", "hover", "stop")
-                   │
-                   ▼  Offline ASR (Vosk) + Fuzzy Classifier (difflib)
-        world-frame target waypoint
-                   │
- ┌─────────────────┴────────────────── OUTER LOOP (Newtonian Physics) ──────────────────┐
- │  Trapezoidal Trajectory Planner  ──►  PD Position & Velocity Controller              │
- │                                  ──►  Outputs: Desired Attitude q_des, Thrust T_des  │
- └─────────────────────────────────────────────┬────────────────────────────────────────┘
-                                               ▼
- ┌──────────────────────────────────── INNER LOOP (Data-Driven SINDy) ──────────────────┐
- │  Quaternion Controller (Kq, Komega derived from identified SINDy hover Jacobian)     │
- │                                  ──►  Motor Mixer Matrix (4 rotor thrusts u1..u4)    │
- └─────────────────────────────────────────────┬────────────────────────────────────────┘
-                                               ▼
-                              MuJoCo 6-DOF Rigid-Body Simulation
-                                               │
-                                               ▼
-                         Live 3D Viewport + Mission-Control HUD
-                        (Attitude Error / Position Error / Effort)
+ spoken or typed command   "forward"  "stop"  "land"  "go to Central Library"
+            │
+            ▼  Vosk speech recognition  ->  fuzzy classifier  ->  place matcher
+   command word / target building
+            │
+            ▼  safety: never target the inside of a building, stay inside the map
+   route planner (A* around buildings)  ->  smooth path (cubic spline + quintic Bezier)
+            │
+ ┌──────────┴──────────────── OUTER LOOP  (standard physics, not identified) ───────────┐
+ │  PD position/velocity control with anti-windup integral                              │
+ │  output: desired tilt (quaternion) + thrust                                          │
+ └──────────┬───────────────────────────────────────────────────────────────────────────┘
+            ▼
+ ┌──────────┴──────────────── INNER LOOP  (built on the SINDy model) ───────────────────┐
+ │  quaternion P² attitude law, gains derived from the identified hover linearization   │
+ │  yaw-priority mixer: (thrust, torques) -> 4 rotor thrusts                            │
+ └──────────┬───────────────────────────────────────────────────────────────────────────┘
+            ▼
+   MuJoCo 6-DOF rigid body, 500 Hz  ──►  IMU sensors  ──►  back to the controller
 ```
 
----
-
-## Methodology: Genuinely Data-Driven Control
-
-### 1. SINDy Rotational Identification
-The drone's rotation is described by two things: its attitude (which way it's pointing) and its angular velocity — how fast it's spinning on each axis. SINDy is given the 4 motor commands and the resulting angular velocity from real flight data, and has to figure out the equation connecting them, on its own — it isn't told the physics in advance.
-
-It does this with **Sequential Thresholded Least Squares (STLSQ)**: try a large library of candidate physics terms, fit them all, then repeatedly drop the weakest ones until only the terms that actually matter survive. Out of 156 candidate terms, it kept **44** — and those 44 recover the real drag, motor effectiveness, and cross-axis coupling numbers within **2–6%** of the simulator's actual ground truth (verified in [`tests/test_identification_physics.py`](tests/test_identification_physics.py)). That match is the real proof it learned genuine physics, not a curve that merely looks right.
-
-### 2. Analytical Gain Derivation (No Hand-Tuning)
-Controller gains are never chosen by guesswork. `gains_from_identified_model()` in [`04_control/controller.py`](04_control/controller.py) reads the drag-vs-inertia number straight off the identified model (one per rotation axis) and plugs it into a standard, textbook control-design rule that targets a specific response speed and damping — the same 2nd-order design method taught in any controls course, just fed real identified numbers instead of guessed ones. The only two things chosen by hand at all are how fast (settling time) and how smoothly (damping) it should respond — every actual gain number is calculated from those two choices plus the identified physics. When the identified model changes, the gains recalculate automatically. (Full formula, worked through step by step: [`CONTROLLER_AND_IMU_EXPLAINED.md`](CONTROLLER_AND_IMU_EXPLAINED.md).)
-
-### 3. Frozen Model Artifact Discipline
-At runtime, Stage E does not silently refit models from raw data. Instead, [`03_validation/run_validation.py`](03_validation/run_validation.py) serializes the gate-validated model and hover Jacobian to `data/processed/sindy_fitted_model.npz`. The real-time flight controller ([`05_voice_interface/flight.py`](05_voice_interface/flight.py)) loads this frozen artifact directly via `np.load()`, guaranteeing deterministic, instant startup and ensuring that flight tests execute against the exact validated model.
-
-### 4. Full Cascade Architecture (Outer Loop + Mixer)
-The inner loop above is one half of a two-loop cascade, run at every control step (`dt = 0.002 s`):
-
-- **Outer loop** ([`04_control/position_controller.py`](04_control/position_controller.py), [`trajectory.py`](04_control/trajectory.py)) — deliberately **standard physics, not identified** (see `docs/PRD.md` §1): a trapezoidal trajectory planner generates a smooth speed-up/cruise/slow-down path toward each voice-command waypoint, and a PD controller converts the resulting position/velocity error into a desired acceleration. That acceleration is then converted into "which way should the drone tilt" — since thrust has to point in the direction you want to accelerate, tilting is just how a drone redirects thrust sideways — using the smallest possible tilt that achieves it (`minimal_rotation_z_to()`), since yaw is never commanded.
-- **Inner loop** consumes that desired attitude + thrust exactly as in §2.
-- **Mixer** ([`04_control/mixer.py`](04_control/mixer.py)) inverts the drone's actual X-configuration rotor geometry (positions + CW/CCW spin pairing, matched against `quad.xml` and pinned by [`tests/test_mixer.py`](tests/test_mixer.py)) to convert (thrust, torque) into 4 individual rotor commands, reporting `saturated=True` rather than silently clipping an unachievable command.
-
-Bandwidth separation between the two loops (outer settling ~3s target vs. inner ~0.56–0.86s measured) is what justifies designing them independently rather than as one coupled MIMO system — a standard cascade-control argument, not an assumption left unverified: Stage D's full-cascade gate confirms the combined system settles correctly (§ Experimental Results below).
-
-See [`CONTROLLER_AND_IMU_EXPLAINED.md`](CONTROLLER_AND_IMU_EXPLAINED.md) for the complete walkthrough of both loops plus the IMU sensing model, including the quaternion double-cover handling and why the outer loop is intentionally not identified.
+Everything runs at **500 Hz** (`dt = 0.002 s`). Frames are ENU world and FLU body, with Hamilton scalar-first quaternions. Units are SI.
 
 ---
 
-## IMU / State Sensing
+## 3. The pipeline, stage by stage
 
-[`01_simulation/models/quad.xml`](01_simulation/models/quad.xml) declares a full IMU sensor block on a dedicated `imu` site:
-```xml
-<sensor>
-  <framepos name="position" objtype="site" objname="imu"/>
-  <framequat name="attitude" objtype="site" objname="imu"/>
-  <velocimeter name="linear_velocity" site="imu"/>
-  <gyro name="angular_velocity" site="imu"/>
-</sensor>
-```
-The flight controller ([`05_voice_interface/flight.py`](05_voice_interface/flight.py)) reads all state — position, attitude, linear velocity, angular velocity — **through these named sensors** (`data.sensordata`, looked up by name via `mj_name2id`), not by reading MuJoCo's internal `qpos`/`qvel` arrays directly. The `gyro` channel is exactly what a physical IMU measures. `linear_velocity` is reported by the sensor in the **body frame** (as a real velocimeter would be), and is explicitly rotated into the world frame the rest of the controller expects via `quat_rotate_vector()` ([`04_control/closed_loop_sim.py`](04_control/closed_loop_sim.py)) using the (also sensor-sourced) current attitude — the same frame-transform step a real flight computer performs on IMU-derived velocity.
+Each stage had a pass/fail gate that had to be met before the next one started.
 
-**Honest scope note:** `position`, `attitude`, and `linear_velocity` are MuJoCo direct-measurement sensor types — they report true, noiseless simulator state, not the output of a real accelerometer-plus-fusion-filter state estimator (which would drift without an external reference like GPS). This is a deliberate simplification appropriate for a controls-focused project: identifying the plant and designing a controller against it is the graded content here, not sensor fusion. Sensitivity to imperfect sensing is characterized separately by the Stage C `noise_ablation.png` result (robust to ~1–2 rad/s injected gyro noise, degrading past ~4 rad/s). Full reasoning and a Q&A-style walkthrough: [`CONTROLLER_AND_IMU_EXPLAINED.md`](CONTROLLER_AND_IMU_EXPLAINED.md).
+| Stage | What happens | Key result | Code |
+|---|---|---|---|
+| **A. Excitation** | Open-loop random (PRBS) and sweep (chirp) rotor inputs on each axis, with no controller active, so the data is rich | Varied, non-flat responses on every axis; trials split into train and held-out **by whole trial** | [`01_simulation/`](01_simulation) |
+| **B. Identification** | Smooth the data (Savitzky-Golay), then fit **SINDy** and **DMDc** on the same trials | SINDy held-out R² **0.9946**, 44/156 terms. DMDc R² 0.9926 near hover only | [`02_identification/`](02_identification) |
+| **C. Validation** | One-step error, then 11 s open-loop rollouts, eigenvalues, sparsity and noise ablations, head-to-head | **SINDy selected.** 0/7 rollouts diverged | [`03_validation/`](03_validation) |
+| **D. Control** | Inner quaternion loop (gains from the model) and outer position loop (standard physics) | Settling 0.56-0.86 s inner, 1.87 s full cascade, final error 0.0006 m | [`04_control/`](04_control) |
+| **E. Voice demo** | Speech to command to waypoint to trajectory to cascade to MuJoCo | 24/24 trials, 5/5 chained, 36 ms processing latency | [`05_voice_interface/`](05_voice_interface) |
 
 ---
 
-## Experimental Results
+## 4. Method
 
-Every quantitative result below is derived from reproducible scripts with strictly held-out validation datasets:
+### 4.1 Data: the plant and the excitation
+A full nonlinear 6-DOF quadrotor in MuJoCo: X configuration, four rotors, 1.0 kg, arm 0.15 m, with drag applied as a generalized force. Excitation signals are generated with seeds derived deterministically per trial (not Python's `hash()`), so results are reproducible across processes. A test enforces this.
 
-| Stage | Verification Focus | Quantitative Result | Status |
-|---|---|---|:---:|
-| **Stage A** — Excitation | Multi-axis PRBS & multisine persistent excitation | Zero runaway trials; rich cross-axis spectral decay | ✅ PASS |
-| **Stage B** — Identification | SINDy held-out one-step prediction | **NRMSE = 0.0786** / **R² = 0.9946** (44/156 terms) | ✅ PASS |
-| **Stage B** — Identification | DMDc held-out prediction (near-hover regime) | **NRMSE = 0.0825** / **R² = 0.9926** (degrades to 0.70 outside hover) | ✅ PASS |
-| **Stage B** — Physics Sanity | Physical coefficient recovery vs. ground truth | Recovered within **2% to 6%** (drag, mixer effectiveness, gyro cross-term) | ✅ PASS |
-| **Stage C** — Rollout Stability | 11 s open-loop autonomous rollout | **SINDy: 0/7 diverged** (full envelope) \| DMDc: 0/16 (hover only) | ✅ PASS |
-| **Stage C** — Head-to-Head | Evaluated in DMDc's *own* near-hover regime | SINDy **0.0789** vs DMDc **0.0825** NRMSE (SINDy wins even near hover) | ✅ PASS |
-| **Stage C** — Model Selection | Parsimony, global validity, closed-loop tracking | **SINDy Selected** (see [`model_selection.md`](data/processed/validation_plots/model_selection.md)) | ✅ PASS |
-| **Stage D** — Inner Loop | Step settling time (SINDy model vs. MuJoCo plant) | **0.56 s – 0.86 s** (agrees within **~0.3%** across all axes) | ✅ PASS |
-| **Stage D** — Full Cascade | Multi-waypoint 3D tracking & steady-state error | Settling time **~1.87 s**, Final Error = **0.0006 m** | ✅ PASS |
-| **Stage E** — Isolated Trials | 24 scripted voice trials (reset to hover before each) | **24/24 Success (100.0%)** at 0.15 m tolerance | ✅ PASS |
-| **Stage E** — Chained Flight | 5-command continuous sequence (**no resets between legs**) | **5/5 Success (100.0%)**, Final Error = **0.0000 m**, Max Chain Error = **0.022 m** | ✅ PASS |
-| **Stage E** — System Latency | End-to-end pipeline processing latency | Classify: 0.42 ms \| Trajectory (quintic Bezier + collision check): 34.8 ms \| Dispatch: 0.86 ms \| **Total: 36.1 ms** | ✅ PASS |
+Savitzky-Golay smoothing is applied before any differentiation. Held-out data means **separate trials**, never a slice of one trajectory.
+
+### 4.2 SINDy: learning the rotational dynamics
+SINDy (Sparse Identification of Nonlinear Dynamics) is given the four rotor thrusts and the measured angular velocity, and must find the equation connecting them. It builds a library of **156** candidate terms and runs **STLSQ** (sequentially thresholded least squares): fit, drop the weakest terms, refit, repeat.
+
+- **44 terms survive.** They recover the true control effectiveness, drag, gyroscopic cross-term and kinematics to within **2-6%** of the simulator's ground truth ([`tests/test_identification_physics.py`](tests/test_identification_physics.py)). That match is the evidence that physics was learned, not just a curve.
+- **Quaternions are never fitted raw.** The attitude is handled in local coordinates with a reset at segment boundaries, and fit pairs are never formed across a boundary (a fake pair there outweighed a million real ones).
+- Sparsity is chosen by a parsimony rule on validation data, not by R² alone, which would pick the densest model (127 terms for +0.0002 R²).
+
+### 4.3 DMDc: the linear comparison
+DMDc (Dynamic Mode Decomposition with control) fits `x₊ = A·x + B·u` by least squares. It is SINDy with a **linear-only library**, no sparsity, and a discrete-time form.
+
+It matches SINDy near hover (NRMSE 0.0825 vs 0.0789) but **degrades to R² 0.70 outside hover**, because a linear model cannot hold the nonlinear terms. So it is reported honestly as valid near hover only, and never used as a pass outside that regime.
+
+### 4.4 Validation and model selection
+| Check | Result |
+|---|---|
+| One-step prediction on held-out trials | SINDy NRMSE **0.0786**, R² **0.9946** |
+| 11 s open-loop rollout, full envelope | **0/7 diverged**, mean final error 0.095 (bound 0.5) |
+| Eigenvalues | 3 of 6 poles are marginal. That is expected: an uncontrolled rigid body's attitude has no restoring force. The rest are stable |
+| Sparsity ablation | R² plateaus above threshold 0.2, collapses at 1.0 (0.588) |
+| Noise ablation | Robust to about 1 rad/s injected gyro noise; knee at 2.0 rad/s; breakdown by 4.0 |
+| Head-to-head in DMDc's own regime | SINDy 0.0789 vs DMDc 0.0825, so SINDy matches it there and also works everywhere else |
+
+**SINDy is selected.** The chosen model is frozen to `data/processed/sindy_fitted_model.npz`, and the flight controller loads exactly that file, so what flies is provably the model that passed the gates.
+
+### 4.5 The cascade controller
+- **Inner loop** ([`04_control/controller.py`](04_control/controller.py)): a singularity-free quaternion P² law. Its gains come from `gains_from_identified_model()`, which reads the drag-to-inertia ratio of each axis from the SINDy hover Jacobian and applies a standard second-order design rule. Only two numbers are chosen by hand (settling time and damping). When the model changes, the gains recompute.
+- **Outer loop** ([`position_controller.py`](04_control/position_controller.py)): PD position and velocity control with an anti-windup integral that acts only when the drone and trajectory are nearly at rest. It outputs the smallest tilt that gives the wanted acceleration.
+- **Mixer** ([`mixer.py`](04_control/mixer.py)): inverts the real X-configuration rotor geometry. When a command would saturate a rotor, the **yaw-priority** version sheds yaw torque first so thrust is kept.
+- **Bandwidth separation** between the loops is 2.86x, which justifies designing them independently.
+
+### 4.6 Interpolation: from a few points to a flyable path
+- **Cubic smoothing spline** (a B-spline fit) through the A* route waypoints rounds every corner.
+- **Quintic Bezier** for each leg, with position, velocity and acceleration matched at the start, so chained commands do not stop dead between legs.
+- Each curve is **checked** against the building map and against the speed and acceleration limits before it is flown.
+
+### 4.7 IMU sensing
+The controller reads state through the model's named sensors (position, attitude, a body-frame velocimeter and a gyro), and rotates the velocity into the world frame as a real flight computer would. These are idealized MuJoCo sensors, noiseless by default. Sensitivity to noise is measured separately in section 6.6.
+
+### 4.8 Voice and navigation
+Vosk (offline) produces text, a fuzzy classifier maps it to a command, and a place matcher maps names to buildings. Commands include synonyms (`halt`, `climb`, `descend`). The transcript is always shown, including misses, so a misheard word is visible, never silent. `stop` brakes the drone to rest ahead of it at the planner's deceleration limit instead of turning back.
+
+### 4.9 Safety
+Targets are clipped so the drone never flies into a building, including when several commands are chained in one direction. The geofence stops flight inside the map edge. Landing finds the surface below (ground or a roof) and shuts the motors off at touchdown.
 
 ---
 
-## Visual Evidence & Validation Plots
+## 5. The campus world
 
-### 3D Visualization
+The map is a **1:10 scale model of the Amrita Coimbatore campus**: 86 buildings, 31 of them named and addressable by voice.
 
-This is a genuinely 3D project throughout — real MuJoCo rigid-body physics rendering, plus a genuinely data-driven 3D visualization of the identified model's phase-space behavior, not just a flight path.
-
-**Live 3D physics simulation** (offscreen-rendered, real MuJoCo rendering — the same physics driving the interactive demo, not a pre-baked animation), flown over a 3D printed-map city (roads, block buildings, a forward obstacle tower, parks) drawn into `scene.xml`, with the drone commanding via the cascade:
-
-![Live 3D Navigation Demo](data/processed/voice_demo/navigation.gif)
-
-**Mid-flight command preemption** — the drone is told "back" at t≈0.7 s while still en route forward, so it reverses immediately instead of continuing toward the obstacle tower ahead (peak excursion 0.39 m vs the 2.3 m tower face):
-
-![Command Preemption](data/processed/voice_demo/robustness_preemption.gif) ![Preemption Plot](data/processed/voice_demo/robustness_preemption.png)
-
-**3D flight trajectory over the same city model** — isometric and top-down views of real logged flights (multiple sessions overlaid), drawn from the identical city spec (`01_simulation/models/city.py`) that `scene.xml` renders, independent of and never re-rendering the MuJoCo scene above:
-
-![3D Flight Trajectory](data/processed/voice_demo/flight_3d_trajectory.png)
-
-**3D angular-velocity phase portrait** — ground truth vs. SINDy-predicted trajectory through the identified model's own spin-rate space (ωx, ωy, ωz — spin on each of the 3 axes), for a combined-axis held-out rollout. This is tied directly to identification quality, not flight path:
-
-![3D Rollout Phase Portrait](data/processed/validation_plots/rollout_sindy_long_3d_phase.png)
-
-### System Identification & Validation Analysis
-
-**What feeds the identification** — rotor thrust inputs, the angular-velocity response they produce, and the derivative targets SINDy/DMDc are actually fit to predict, all from one representative excitation trial:
-
-![Input vs Output Data Definition](data/processed/validation_plots/input_output_data_definition.png)
-
-| SINDy vs. DMDc Head-to-Head (Near Hover) | Discrete & Continuous Eigenvalue Spectra |
+| Real campus footprints and heights | 3D scene with the satellite ground |
 |:---:|:---:|
-| ![Head to Head](data/processed/validation_plots/head_to_head_near_hover.png) | ![Eigenvalues](data/processed/validation_plots/eigenvalue_spectrum.png) |
+| ![Campus map with outlines](docs/images/campus_map.jpg) | ![3D campus scene](docs/images/campus_3d.jpg) |
 
-| STLSQ Sparsity Ablation (threshold sweep) | Additive Gaussian Noise Sensitivity |
+- **Footprints and names** come from OpenStreetMap. **Heights are estimated** from building type, because OSM does not carry floor counts.
+- **Ground** is a real satellite photo (Esri World Imagery, zoom 18, about 0.6 m per pixel) resampled onto the floor plane.
+- **Alignment.** The photo and the outlines come from different sources, so a single offset is not enough. `align_buildings.py` measures each building against its roof edges and moves it onto the photo. 51 of 80 measurable buildings were moved (median move 2 m); the other 29 stayed at their OSM position because the evidence was unclear. The mean edge match at the outlines rose from 38.8 to 62.4.
+- The visual layers are physics-inert (no mass, joints or contacts), and a test enforces that.
+
+---
+
+## 6. Results
+
+Every number below comes from a reproducible script. Held-out data is used wherever a model is judged.
+
+### 6.1 Stopping: the drone brakes to rest
+
+![Speed during the scripted flight](docs/images/stop_braking.png)
+
+| Move | Speed when "stop" was said | Time to rest | Braking distance | Altitude change |
+|---|---|---|---|---|
+| forward | 1.00 m/s | **0.92 s** | **0.50 m** | 0.019 m |
+| left | 1.00 m/s | **0.92 s** | **0.50 m** | 0.001 m |
+
+The distance matches the physics: stopping from 1.0 m/s at the planner's 1.0 m/s² deceleration limit takes 0.5 m. Rest is defined as speed below 0.05 m/s. Speeds are in simulation units. Source: [`docs/recordings/stop_metrics.json`](docs/recordings/stop_metrics.json).
+
+### 6.2 Identification and validation
+
+| Metric | Value |
+|---|---|
+| SINDy held-out derivative R² / one-step NRMSE | **0.9946** / **0.0786** (44 of 156 terms) |
+| DMDc held-out R² / NRMSE (near hover) | 0.9926 / 0.0825 (0.70 outside hover) |
+| Coefficients vs simulator truth | within **2-6%** |
+| Rollouts diverged (11 s) | SINDy **0/7**, DMDc 0/16 (hover only) |
+
+| SINDy vs DMDc near hover | Eigenvalue spectra |
 |:---:|:---:|
-| ![Sparsity Ablation](data/processed/validation_plots/sparsity_ablation.png) | ![Noise Ablation](data/processed/validation_plots/noise_ablation.png) |
+| ![Head to head](results/plots_2d/head_to_head_near_hover.png) | ![Eigenvalues](results/plots_2d/eigenvalue_spectrum.png) |
 
-**Open-loop rollout tracking** (theta and omega, ground truth vs. predicted, plus combined-state error norm):
+| Sparsity ablation | Noise ablation |
+|:---:|:---:|
+| ![Sparsity](results/plots_2d/sparsity_ablation.png) | ![Noise](results/plots_2d/noise_ablation.png) |
 
-![SINDy Long-Horizon Rollout](data/processed/validation_plots/rollout_sindy_long.png)
+![SINDy long rollout vs ground truth](results/plots_2d/rollout_sindy_long.png)
 
-### Closed-Loop Cascade Response
-Cascaded tracking performance driving the full 6-DOF MuJoCo plant under SINDy-derived gains:
+![3D angular-velocity phase portrait: truth vs SINDy prediction](results/plots_3d/rollout_sindy_long_3d_phase.png)
 
-![Cascade Forward Step Response](data/processed/control_plots/cascade_forward.png)
+### 6.3 Control
 
----
+| Metric | Value |
+|---|---|
+| Inner-loop step settling (SINDy model vs MuJoCo plant) | **0.56-0.86 s**, agreeing within about 0.3% |
+| Full cascade, six waypoints | settles in about **1.87 s**, final error **0.0006 m** |
+| Demo flight with the curved Bezier path | about 2.95 s to settle |
 
-## Maneuver Gauntlet — 67/67 PASS (100%)
+![Cascade forward step](results/plots_2d/cascade_forward.png)
 
-Beyond the 24-isolated + 5-chained Stage E gate above, a dedicated stress test (`run_gauntlet.py`) exercises **every command, every chain, and the edge cases a strict reviewer would ask about first**:
+### 6.4 Voice trials and the maneuver gauntlet
 
-| Section | Coverage | Result |
-|---|---|:---:|
-| Single moves | All 8 commands × 3 runs from clean hover | ✅ 24/24 |
-| Chained sequences | Square, stairs, full-mix × 2 runs, no resets between legs | ✅ 38/38 legs |
-| Edge cases | Rapid-fire re-dispatch, mid-move preemption, stop-then-resume, altitude limits (never below floor, never runaway) | ✅ 5/5 |
+| Test | Result |
+|---|---|
+| 24 scripted voice trials, reset before each | **24/24**, tolerance 0.15 m, final error about 0.0044 m |
+| 5 chained commands, no reset between legs | **5/5**, max leg error 0.022 m |
+| Mid-flight reversal ("back" at 0.7 s while flying forward) | peak excursion 0.259 m, reversal in **0.42 s**, clear of the 2.3 m tower face by 2.04 m |
+| Maneuver gauntlet (all commands, chains, edge cases) | **67/67** pass |
+| Processing latency (classify + plan + dispatch) | **36 ms** (classify 0.42 ms, trajectory 34.8 ms, dispatch 0.86 ms) |
 
-Full numbers, per-maneuver plots (CSV + PNG for all 67), and a combined chase+bird's-eye GIF of the entire gauntlet are in **[`results/RESULTS.md`](results/RESULTS.md)** — that file is the single consolidated deliverable (plots, videos, logs, raw data) if you only look at one thing. Reproduce it with:
-```powershell
-.\.venv\Scripts\python.exe run_gauntlet.py
-.\.venv\Scripts\python.exe save_plots.py
-```
+The 36 ms is measured on the typed-text path; live speech adds the recognizer's own decode time, measured separately per utterance. Full gauntlet tables are in [`results/RESULTS.md`](results/RESULTS.md).
 
-**Bird's-eye camera**: the interactive demo (`demo.py`) and every offscreen render now show chase view *and* a top-down Google-Maps-style view together. In the live 3D window, press **B** to toggle the MuJoCo viewer itself between chase and bird's-eye.
+![Preemption: x(t) against the plan that would have continued forward](results/plots_2d/robustness_preemption.png)
 
----
+![Telemetry of a logged flight](results/plots_2d/telemetry_2d.png)
 
-## Autonomous Navigation Among Moving Obstacles
+![3D flight paths over the model city](results/plots_3d/flight_3d_trajectory.png)
 
-The drone can also fly **by itself**: a patrol loop around the plaza with four moving obstacles (two pillars, two spheres) plus the city's buildings and the obstacle tower, with no operator input and **no straight-line flight**. The east leg runs straight through the tower and every leg is crossed by a mover, so a straight line cannot complete it.
+### 6.5 Autonomous navigation among moving obstacles
+The drone can also fly a patrol **by itself** around four moving obstacles plus the buildings, with no straight-line flight. An avoidance planner supplies only the reference; the same cascade does all the control.
 
-```
- patrol waypoints -> AvoidancePlanner (04_control/avoidance.py) -> reference (p, v, a)
- moving obstacles ->   time-to-collision + committed swirl          |
- city buildings   ->   (curves around obstacles)                    v
-                      SAME outer PD loop -> SAME identified-model inner loop -> MuJoCo
-```
-
-It is an autonomy layer **above** the Stage D cascade, not a replacement: the planner only produces the reference the cascade tracks (`FlightController.reference`, default `None`), so the "never bypass the cascade" rule still holds.
-
-**How the path curves.** A reference point is steered by a velocity command: goal attraction (with the part pointing into an obstacle removed), short-range repulsion, a **time-to-collision** term so fast crossers are dodged early, and a **committed tangential swirl** around each obstacle (the committed side is what bends the path and prevents left/right dithering). The side is chosen by probing which side has more free space, and a stall detector flips the sides once if opposing obstacles cancel. Acceleration and jerk are limited so the cascade can actually track it.
-
-**Results** (`05_voice_interface/run_autonomous.py`, 75 s patrol, scored against the *true* obstacle positions):
-
-| | Straight-line baseline (same cascade, planner ignores obstacles) | Autonomous (avoiding) |
+| | Straight-line baseline | Autonomous |
 |---|---|---|
-| Development seeds 0-4 | **0/5** collision-free, min clearance **-0.757 m**, 43 s total inside obstacles | **5/5** collision-free, min clearance **0.284 m**, longest stall 1.0 s |
-| Never-seen seeds 100-129 | n/a | **29/30** collision-free (min clearance of the 29: 0.131 m, median 0.394 m) |
-| Path shape | leg length / chord = 1.06 | leg length / chord = **1.25** (curved) |
-| Progress | n/a | 6-9 waypoints per 75 s (about 1.8 laps) |
+| Development seeds 0-4 | **0/5** collision-free, 43 s inside obstacles | **5/5** collision-free, min clearance 0.284 m |
+| Never-seen seeds 100-129 | n/a | **29/30** collision-free, median clearance 0.394 m |
 
-Obstacle phases are set by the seed, so each seed is a different encounter. Seeds 100-129 were evaluated only after the planner and scenario were final. Outputs: [`autonomy_paths.png`](data/processed/autonomy/autonomy_paths.png) (top-down paths, clearance, speed, tilt vs the straight-line baseline), `autonomous_patrol.gif` (3D, with path trail; regenerate with `--render`), and `autonomy_results.csv`.
+![Autonomous paths vs straight line](data/processed/autonomy/autonomy_paths.png)
 
-**Honest limits.**
-- **The one failure (seed 104)** is a *double pinch*: two movers converge on the drone from different sides at once, there is no gap, and a reactive planner with no lookahead cannot foresee it (0.28 s of contact, 1.7 m/s emergency escape). A planner that predicts and waits would be needed.
-- **Scenario fairness is an assumption, not something the planner solves.** A mover must never seal a corridor (>= 0.85 m between a pillar's extreme and a building, >= 1.1 m for a sphere, enforced by `tests/test_autonomy.py`). Two earlier "failures" were this scenario flaw, not the planner; the planner cannot succeed where no passable gap exists.
-- **Perfect obstacle perception:** the planner is given obstacle position and velocity exactly (no sensor or noise model for perceiving obstacles). Yaw is fixed (see `flight.py`).
-- **Tuning history:** two planner iterations were made on seeds 0-54 after observing failures (a head-on stall at the tower, then a side-choice regression); the clean held-out figure is the 100-129 set.
-- **Stalls still happen briefly:** 8 of 30 held-out runs needed one stall-escape; the longest stall was 4.4 s.
-- The live viewer (`--live`, or `RUN_AUTONOMOUS.bat`) starts without errors but was not visually inspected.
+### 6.6 Robustness to noise, wind and wrong mass
+Each disturbance was swept one at a time on a `forward` leg. Two fixes were added after measuring where it failed: the yaw-priority mixer (yaw is the cheapest axis to saturate) and an anti-windup integral (a PD law has a steady offset under constant force).
 
-Run it: `.\.venv\Scripts\python.exe 05_voice_interface\run_autonomous.py --render` (stats + plot + GIF) or double-click `RUN_AUTONOMOUS.bat` (live 3D).
-
-## Closed-Loop Robustness (sensor noise, wind, payload mismatch)
-
-Everything above flies with ideal sensors on the exact identified mass. `05_voice_interface/run_robustness.py` stresses the *controller* instead, sweeping one disturbance at a time on a `forward` leg and comparing the original gated cascade against the same cascade plus two additions. Results: [`data/processed/robustness_plots/robustness.png`](data/processed/robustness_plots/robustness.png) and `robustness_results.csv`.
-
-| Disturbance | Original cascade fails at | With additions still passes (< 0.15 m) up to |
+| Disturbance | Original cascade fails at | With the two fixes, still within 0.15 m up to |
 |---|---|---|
-| Gyro white noise | 0.05 rad/s (0.36 m) | 2.0 rad/s (0.054 m) |
-| Gyro bias | 0.5 rad/s | 0.5 rad/s (0.011 m) |
-| Attitude noise | 0.01 rad (0.21 m) | 0.1 rad (0.018 m) |
-| Constant wind | 1 N (0.25 m) | 2 N (0.036 m); **fails at 3 N** |
-| Wind gust | passes (4 N) | passes (4 N) |
-| Payload mass error | ±10% (0.25 m) | ±20% (0.010 m); **fails at +50%** |
+| Gyro noise | 0.05 rad/s | 2.0 rad/s |
+| Constant wind | 1 N | 2 N (fails at 3 N) |
+| Payload mass error | ±10% | ±20% (fails at +50%) |
 
-**Why it failed, found by measurement, not assumed.** (1) Noise: yaw is the weakest axis (`K_M`=0.02 m vs arm 0.106 m), so a small yaw-gyro error drove rotors into 0 N / 6 N clipping on ~70% of steps and the lost collective thrust broke altitude hold. Yaw-only noise reproduced the whole failure (0.34 m) while roll/pitch-only noise did not (0.017 m). Fix: priority desaturation in the mixer that sheds yaw torque first (`mixer.inverse_mix_yaw_priority`). (2) Wind/payload: a PD law has a steady-state offset `a_dist/Kp` (0.1 kg extra = 0.245 m, matching the measured value). Fix: anti-windup integral action in `PositionController`, active only while the trajectory and the drone are both nearly at rest (integrating through a move overshot nominal legs; gate threshold swept 0.08–1.0 m/s).
-
-**Honest limits.** The integral's authority is clamped to 2 m/s², so disturbances beyond that (3 N wind, +50% payload) still fail. Nominal final error at 8 s is 0.009 m with the additions versus 0.0002 m without (both far inside tolerance). Realistic MEMS gyro noise is ~0.001–0.005 rad/s, roughly 10–40x below where the original cascade first failed. Both additions default **off** in the Stage D gate scripts (`run_cascade.py`, `run_inner_loop.py` are unchanged) and **on** in `FlightController` (`robust=True`); the full Stage E gates were re-run with them on (24/24, 5/5, preemption, 67/67).
-
-## Latency Characterization & Verification
-
-In compliance with strict scientific rigor, latency is characterized with full transparency:
-
-1. **Scripted/Deterministic Benchmark (~36 ms):**
-   - The reported **36.1 ms** end-to-end figure is the mean over 24 trials using `TextSource` (latest `run_trials.py` run).
-   - It strictly benchmarks algorithmic processing: fuzzy vocabulary classification (0.42 ms), trajectory planning (34.8 ms) and cascade controller dispatch (0.86 ms).
-   - Trajectory planning dominates since the planner became a curved quintic Bezier with a feasibility search and a building-collision check (it was a 0.03 ms trapezoid before). The feasibility check was vectorised from ~183 ms to ~7.5 ms standalone with identical planned durations; the in-trial figure is higher because it includes the collision check and carried-velocity boundary conditions. Still ~14x below the 0.5 s command-reversal budget (36 ms vs 500 ms).
-   - This isolates control software overhead from hardware-dependent acoustic capture.
-
-2. **Live Acoustic Pipeline (`VoskSource`):**
-   - When running live microphone input via Vosk, acoustic decoding time is actively measured per utterance inside `VoskSource._audio_callback` using high-resolution monotonic clocks (`perf_counter`) around `AcceptWaveform()` and `Result()`.
-   - Voice Activity Detection (VAD) is integrated directly within Kaldi's acoustic decoder endpointing logic rather than an artificial decoupled stage.
-   - Live speech decoding typically incurs 80–220 ms depending on CPU load and phrase length, well within human interactive cadence. Zero fabricated latencies are reported.
+![Robustness sweeps](data/processed/robustness_plots/robustness.png)
 
 ---
 
-## Reproducing the Results (End-to-End Execution)
+## 7. Honest limits
 
-To reproduce the complete pipeline from scratch in Windows PowerShell:
+- **No state estimator.** The controller reads idealized IMU sensors directly. There is no Kalman filter. Noise tolerance is measured by injecting noise, not by filtering it.
+- **DMDc is valid near hover only.** It is reported that way and is never claimed beyond it.
+- **Building heights are estimated** from type, not surveyed. Footprints and names are real.
+- **The photo leans.** It was taken at a slight angle, so tall buildings show a pale rim around the 3D box that no outline shift can remove. 29 of 80 buildings were left at their OSM position.
+- **Disturbance limits.** 3 N wind and +50% payload still fail. The integral's authority is capped at 2 m/s² by design.
+- **Autonomy assumes perfect obstacle perception**, and its one failure (seed 104) is a double pinch that a planner with no lookahead cannot foresee.
+- **Speech recognition makes mistakes.** The small Vosk model mishears words; the HEARD LOG shows exactly what it heard.
+- **Results are from simulation** at 1:10 scale. No hardware flight was done.
 
-### 1. Environment Setup
+---
+
+## 8. How to run
+
+**Windows, PowerShell.** One-time setup:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
+For voice control, download the small English model from the [Vosk model list](https://alphacephei.com/vosk/models) and unzip it as `vosk-model-small-en-us-0.15\` in the project root. Without it, the demo falls back to typed commands.
 
-### 2. Execute Staged Gates (In Order)
-Each stage validates gate criteria and generates empirical logs in `data/processed/`:
+### The one launcher
+Double-click **`RUN.bat`** and pick a number:
+
+| | |
+|---|---|
+| **1** | Fly the drone: live campus demo with a commands guide that stays open |
+| **2** | After flying: 2D and 3D graphs of the flight you just did |
+| **3** | Drone parameters (mass, inertia, gains, identified model) |
+| **4** | Run the tests |
+| **5** | Browser simulator on localhost only |
+| **6** | Rebuild every result and plot (several minutes) |
+
+### What to say
+`forward`, `back`, `left`, `right`, `up`, `down` keep moving until a building, the map edge or the next command. `stop` or `hover` brakes to rest. `land` descends onto the ground or a roof. `go to <building>` flies a curved route around the buildings, for example "go to central library". The window also has click buttons for every command, a live LISTENING line and a HEARD LOG.
+
+### Reproduce the results
 ```powershell
-# Stage A: Generate PRBS/multisine excitation dataset & gate verification plots
-.\.venv\Scripts\python.exe 01_simulation\run_excitation.py
-
-# Stage B: Fit SINDy & DMDc models, evaluate held-out one-step prediction errors
-.\.venv\Scripts\python.exe 02_identification\run_identification.py
-
-# Stage C: Run 11s open-loop rollouts, ablations, model selection & freeze artifact
-.\.venv\Scripts\python.exe 03_validation\run_validation.py
-
-# Stage D: Validate inner attitude loop & outer cascaded trajectory tracking
-.\.venv\Scripts\python.exe 04_control\run_inner_loop.py
-.\.venv\Scripts\python.exe 04_control\run_cascade.py
-
-# Stage E: Execute isolated (24/24) and chained (5/5) voice navigation trials
-.\.venv\Scripts\python.exe 05_voice_interface\run_trials.py
-
-# Stage E Demo: Regenerate the 3D offscreen animated GIF with telemetry overlay
-.\.venv\Scripts\python.exe 05_voice_interface\render_offscreen.py
-
-# Stage E Demo: Regenerate the mid-flight command-preemption GIF
-.\.venv\Scripts\python.exe 05_voice_interface\render_offscreen.py --preempt
-
-# Stage E: Headless command-preemption trial + robustness plot + parquet log
-.\.venv\Scripts\python.exe 05_voice_interface\run_preemption.py
-
-# Maneuver gauntlet: 67 scripted maneuvers, logs + per-maneuver plots + GIF
-.\.venv\Scripts\python.exe 05_voice_interface\run_autonomous.py --render
-.\.venv\Scripts\python.exe 05_voice_interface\run_robustness.py
-.\.venv\Scripts\python.exe run_gauntlet.py
-
-# Collect every plot/CSV/GIF above into results/ (matching results/RESULTS.md)
-.\.venv\Scripts\python.exe save_plots.py
-
-# Full Verification: Run entire unit & regression test suite (96 passed)
-.\.venv\Scripts\python.exe -m pytest tests\
+.\.venv\Scripts\python.exe 01_simulation\run_excitation.py          # A: excitation data
+.\.venv\Scripts\python.exe 02_identification\run_identification.py  # B: SINDy and DMDc
+.\.venv\Scripts\python.exe 03_validation\run_validation.py          # C: validation, freezes the model
+.\.venv\Scripts\python.exe 04_control\run_inner_loop.py             # D: inner loop
+.\.venv\Scripts\python.exe 04_control\run_cascade.py                # D: full cascade
+.\.venv\Scripts\python.exe 05_voice_interface\run_trials.py         # E: 24 + 5 voice trials
+.\.venv\Scripts\python.exe 05_voice_interface\run_preemption.py     # E: mid-flight reversal
+.\.venv\Scripts\python.exe run_gauntlet.py                          # 67 maneuvers
+.\.venv\Scripts\python.exe 05_voice_interface\run_robustness.py     # noise, wind, payload
+.\.venv\Scripts\python.exe 05_voice_interface\run_autonomous.py --render   # moving obstacles
+.\.venv\Scripts\python.exe 05_voice_interface\record_demo_video.py  # the video above
+.\.venv\Scripts\python.exe -m pytest                                # 150 tests
 ```
+`REBUILD_RESULTS.bat` runs the whole chain and collects every plot into `results/`.
 
-**Or just double-click `REBUILD_RESULTS.bat`** — runs every command above in order, with each step's output saved to `results\logs\`. Takes several minutes (the gauntlet's 67 maneuvers are the slow part); this is a "regenerate all the evidence from scratch" utility, not something you run before every demo.
-
-### 3. Interactive Live 3D Simulation & Telemetry HUD
-Run the interactive MuJoCo 3D viewer accompanied by the real-time mission-control HUD:
+### Rebuild the campus
 ```powershell
-# Interactive typed/scripted control:
-.\.venv\Scripts\python.exe 05_voice_interface\demo.py --source text
-
-# Live microphone input (requires Vosk model in ./vosk-model-small-en-us-0.15):
-.\.venv\Scripts\python.exe 05_voice_interface\demo.py --source vosk
+.\.venv\Scripts\python.exe 01_simulation\models\fetch_satellite.py   # photo (cached after first run)
+.\.venv\Scripts\python.exe 01_simulation\models\align_buildings.py   # per-building alignment
+.\.venv\Scripts\python.exe 01_simulation\models\make_campus.py       # scene, floor, map
 ```
-
-### 4. Quick Launch (1-Click Windows Batch Scripts)
-Double-click any of the launcher batch scripts directly from File Explorer:
-* **`RUN_EVERYTHING.bat`** — For presenting, step 1: one click, zero typing. Opens the live 3D demo, a commands guide (stays open the whole time), and the full test suite.
-* **`SHOW_RESULTS.bat`** — Step 2: after you've flown, one click opens fresh 2D + 3D graphs of *that* flight (the demo logs every command automatically — this is never an old test run).
-* **`run_drone.bat`** or **`START_DEMO.bat`** — Interactive launcher menu (flight modes, 24+5 trials, 31-test pytest suite).
-* **`run_voice_control.bat`** — Launches live microphone voice control with automatic model loading.
-* **`run_text_control.bat`** — Launches interactive typed navigation (instant, no microphone needed).
-* **`REBUILD_RESULTS.bat`** — Regenerates every plot/CSV/GIF in `results/` from scratch (the full Stage A-E pipeline + the 67-maneuver gauntlet). Takes several minutes; run this if you want to reproduce the whole evidence gallery, not just fly the demo.
-
-### 5. Standalone Offline Analysis Plots
-Run directly any time after a flight (no server, just a matplotlib window reading the most recently logged parquet under `data/processed/voice_sessions/`):
-```powershell
-.\.venv\Scripts\python.exe 05_voice_interface\plot_2d_telemetry.py
-.\.venv\Scripts\python.exe 05_voice_interface\plot_3d_trajectory.py
-```
-The 3D plot draws the same city model `scene.xml` renders (imported from `01_simulation/models/city.py` — buildings and the obstacle tower), so the spatial scale matches the live 3D scene — not a re-render of MuJoCo's own 3D viewport. `run_preemption.py` exercises the mid-flight preemption scenario headlessly (reports peak forward excursion, clearance to the obstacle-tower face, and reversal latency) and writes `robustness_preemption.png`.
 
 ---
 
-## Repository Structure
+## 9. Repository layout
 
 ```
-done_v2.0/
-├── data/
-│   ├── raw/                               # Raw excitation parquet datasets (Stage A)
-│   └── processed/                         # Held-out splits, plots, logs & frozen model
-│       ├── sindy_fitted_model.npz         # Frozen SINDy model artifact for Stage E
-│       ├── excitation_plots/              # Excitation response plots
-│       ├── validation_plots/              # Rollout, ablation, eigenvalue & comparison plots
-│       ├── control_plots/                 # Inner loop & cascade tracking step responses
-│       ├── voice_demo/                    # Animated 3D flight GIF (navigation.gif)
-│       └── voice_sessions/                # Parquet logs of isolated & chained trials
-├── docs/                                  # Formal specifications & engineering documentation
-│   ├── PRD.md                             # Product Requirements Document
-│   ├── TDD.md                             # Technical Design Document
-│   ├── ENGINEERING_PLAN.md                # Task breakdown & stage milestones
-│   ├── DATA_MODEL.md                      # Logged telemetry data schemas
-│   └── DESIGN_FLOW.md                     # Architectural data flow & stage handoffs
-├── 01_simulation/                # MuJoCo quadrotor model & excitation signals
-├── 02_identification/                # SINDy (STLSQ) & DMDc identification algorithms
-├── 03_validation/                    # Rollout verification, ablations & model selection
-├── 04_control/                       # Quaternion controller & Newtonian trajectory planner
-├── 05_voice_interface/           # Voice input, real-time HUD dashboard, live flight & offline plots
-├── tests/                                 # Full Pytest test suite (31 tests across all stages)
-├── CLAUDE.md                              # Single source of truth for stage-gate status
-└── requirements.txt                       # Project dependencies
+.
+├── RUN.bat                    the one launcher
+├── 01_simulation/             MuJoCo quadrotor, excitation signals, campus and city scenes
+│   └── models/                quad.xml, campus generators (OSM, satellite, alignment), obstacles
+├── 02_identification/         SINDy and DMDc fits, preprocessing
+├── 03_validation/             rollouts, eigenvalues, ablations, model selection, frozen model
+├── 04_control/                quaternion controller, position loop, mixer, trajectories,
+│                              route planner, avoidance planner
+├── 05_voice_interface/        voice input, commands, flight wrapper, demo, trials, recording
+├── tests/                     150 automated tests
+├── results/                   plots, data and the gauntlet summary (RESULTS.md)
+├── docs/                      PRD, TDD, design flow, codebase guide, images, recordings
+├── web/                       browser simulator (localhost only)
+├── CONTROLLER_AND_IMU_EXPLAINED.md   plain-English controller and IMU walkthrough
+├── UNDERSTAND_MY_PROJECT.md          guided tour of every file
+└── CLAUDE.md                  stage-gate log and decision history
 ```
+
+More detail: [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md) (code map), [`docs/TDD.md`](docs/TDD.md) (design), [`ONBOARDING.md`](ONBOARDING.md) (what is claimed and how to check it).
+
+---
+
+## 10. Team and branches
+
+| Name | Roll no. |
+|---|---|
+| Mamidala Som Praneeth Babu | CB.SC.U4AIE24029 |
+| C. Karthik | CB.SC.U4AIE24107 |
+| Ch. Virinchi | CB.SC.U4AIE24158 |
+| K. Jatin Chandra Gupta | CB.SC.U4AIE24162 |
+
+| Branch | Contents |
+|---|---|
+| `drone_mujoco` | **This project**: MuJoCo, SINDy-identified attitude loop, voice demo on the campus |
+| `main` | The original ESP32-based simulator attempt |
+| `drone_gazebo` | Gazebo write-up |
+
+---
+
+## 11. Credits and references
+
+- **Data and imagery.** Building footprints and names: © OpenStreetMap contributors (ODbL). Ground photo: Imagery © Esri, Maxar, Earthstar Geographics.
+- **Software.** MuJoCo (Google DeepMind), PySINDy, PyDMD, Vosk (Alpha Cephei), NumPy, SciPy, Matplotlib.
+- Brunton, Proctor, Kutz. *Discovering governing equations from data by sparse identification of nonlinear dynamical systems.* PNAS, 2016.
+- Proctor, Brunton, Kutz. *Dynamic mode decomposition with control.* SIAM J. Applied Dynamical Systems, 2016.
+- Fresk, Nikolakopoulos. *Full quaternion based attitude control for a quadrotor.* European Control Conference, 2013.
+- Savitzky, Golay. *Smoothing and differentiation of data by simplified least squares procedures.* Analytical Chemistry, 1964.
+- Hart, Nilsson, Raphael. *A formal basis for the heuristic determination of minimum cost paths* (A*). IEEE Trans. SSC, 1968.
+- Todorov, Erez, Tassa. *MuJoCo: a physics engine for model-based control.* IROS, 2012.

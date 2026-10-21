@@ -4,7 +4,7 @@ REM the full Stage A-E pipeline, the 67-maneuver gauntlet, then collects
 REM every plot/CSV/GIF into results/ (matching README.md's gallery and
 REM results/RESULTS.md). Takes several minutes - this is a "rebuild the
 REM evidence" utility, not something you run before every presentation;
-REM RUN_EVERYTHING.bat / SHOW_RESULTS.bat are for that.
+REM RUN.bat is for that.
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (

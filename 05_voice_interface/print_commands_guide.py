@@ -1,7 +1,7 @@
 """Prints a plain-English reference for the live demo: every voice command
 (with its recognized synonyms), the dashboard buttons, and how the live
 feedback works. Meant to be launched into its own window that stays open
-for the whole demo (see RUN_EVERYTHING.bat) - this script just prints once
+for the whole demo (see RUN.bat) - this script just prints once
 and exits; the launcher's `cmd /k` is what keeps the window up.
 
 Vocabulary is imported from commands.py, never re-typed here, so this
@@ -67,7 +67,7 @@ def main() -> None:
     print("AFTER YOU FLY")
     print("-" * width)
     print("  This window is just a reference - it stays open. When you're")
-    print("  done flying, double-click SHOW_RESULTS.bat for a fresh graph")
+    print("  done flying, run RUN.bat and pick 2 for a fresh graph")
     print("  of exactly what you just did (not an old test run - every")
     print("  command you fly gets logged automatically).")
 

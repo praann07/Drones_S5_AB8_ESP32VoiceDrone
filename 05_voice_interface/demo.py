@@ -106,7 +106,7 @@ class LiveFlightLogger:
     session has no fixed per-command duration.
 
     Written to disk after EVERY completed leg, not only once at exit -
-    the earlier version only saved on exit, so SHOW_RESULTS.bat run while
+    the earlier version only saved on exit, so menu option 2 of RUN.bat run while
     the demo window was still open showed nothing from the current
     session at all (only old, unrelated files) even though the user had
     already flown several commands. One filename is picked ONCE, at

@@ -20,7 +20,7 @@ receipt.
 | `render_nav.log`, `render_preempt.log` | The two demo GIFs were rendered |
 | `gauntlet.log` | All 67 maneuvers in the full test gauntlet |
 | `save_plots.log` | This `results/` folder was assembled from the run above |
-| `pytest.log` | The full automated test suite (43 tests) |
+| `pytest.log` | The full automated test suite (150 tests) |
 
 If a step ever fails, this is where to look — the exact error will be in
 the matching file above, not in `RESULTS.md`.

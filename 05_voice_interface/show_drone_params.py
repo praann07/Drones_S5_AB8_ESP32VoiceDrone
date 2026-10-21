@@ -3,7 +3,7 @@
 Every value is read from the files the simulator itself uses (quad.xml,
 mixer.py, sim_driver.py, trajectory.py, position_controller.py and the
 frozen SINDy model), so this sheet can never disagree with the sim.
-Run: SHOW_DRONE_PARAMS.bat  (or python 05_voice_interface/show_drone_params.py)
+Run: RUN.bat option 3  (or python 05_voice_interface/show_drone_params.py)
 """
 from __future__ import annotations
 
