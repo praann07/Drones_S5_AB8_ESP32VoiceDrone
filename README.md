@@ -1,8 +1,33 @@
-# Voice-Controlled Quadrotor with a Data-Driven Attitude Loop
+<h1 align="center">Voice-Controlled Quadrotor<br>with a Data-Driven Attitude Loop</h1>
 
-**Say "forward", "stop", or "go to the library". A simulated drone flies there on a controller built from an equation it learned from its own flight data.**
+<p align="center">
+  <b>Say "forward", "stop", or "go to the library". A simulated drone flies there on a controller built from an equation it learned from its own flight data.</b><br>
+  Group project · <i>Data Driven Control of Drones</i> · B.Tech AI Engineering<br>
+  School of Artificial Intelligence, Amrita Vishwa Vidyapeetham, Coimbatore
+</p>
 
-Course project for *Data Driven Control of Drones* (Amrita Vishwa Vidyapeetham, Coimbatore). Runs in MuJoCo on a 1:10 scale model of the real campus, built from OpenStreetMap building outlines and a satellite photo.
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white">
+  <img alt="Simulator" src="https://img.shields.io/badge/simulator-MuJoCo-orange">
+  <img alt="Identification" src="https://img.shields.io/badge/identification-SINDy%20%2B%20DMDc-9C27B0">
+  <img alt="SINDy R2" src="https://img.shields.io/badge/SINDy%20held--out%20R%C2%B2-0.9946-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-150%20passing-brightgreen">
+  <img alt="Voice" src="https://img.shields.io/badge/voice-Vosk%20offline-blue">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-lightgrey">
+</p>
+
+<p align="center">
+  <a href="#1-objective">Objective</a> ·
+  <a href="#3-the-pipeline-stage-by-stage">Pipeline</a> ·
+  <a href="#4-method">Method</a> ·
+  <a href="#5-the-campus-world">Campus</a> ·
+  <a href="#6-results">Results</a> ·
+  <a href="#7-honest-limits">Limits</a> ·
+  <a href="#8-how-to-run">Run it</a> ·
+  <a href="#10-team-and-branches">Team</a>
+</p>
+
+Runs in MuJoCo on a 1:10 scale model of the real campus, built from OpenStreetMap building outlines and a satellite photo.
 
 [![Campus demo: take-off, cruise, stop, turn, routed flight, landing](docs/recordings/campus_demo.gif)](docs/recordings/campus_demo.mp4)
 
@@ -105,6 +130,21 @@ It matches SINDy near hover (NRMSE 0.0825 vs 0.0789) but **degrades to R² 0.70 
 | Head-to-head in DMDc's own regime | SINDy 0.0789 vs DMDc 0.0825, so SINDy matches it there and also works everywhere else |
 
 **SINDy is selected.** The chosen model is frozen to `data/processed/sindy_fitted_model.npz`, and the flight controller loads exactly that file, so what flies is provably the model that passed the gates.
+
+### 4.4b The equations that matter
+With state `x = (θ, ω)` (attitude in local coordinates, body rates) and rotor thrusts `u`:
+
+| Piece | Equation | Where |
+|---|---|---|
+| SINDy model | `ω̇ = Θ(ω, u) · Ξ`, with `Θ` a 156-term library and `Ξ` sparse (44 non-zero rows) | `02_identification/sindy_fit.py` |
+| STLSQ | repeat: `Ξ ← argmin ‖ω̇ − ΘΞ‖²`, then zero every `|Ξᵢⱼ| < λ` | `sindy_fit.py` |
+| DMDc | `xₖ₊₁ = A·xₖ + B·uₖ`, least squares on snapshot pairs | `02_identification/dmdc_fit.py` |
+| Quaternion error | `qₑ = q_ref ⊗ q*`, use the vector part `qₑ,vec` (about half the angle error) | `04_control/controller.py` |
+| Inner law | `τ = −K_q · sign(qₑ,w) · qₑ,vec − K_ω · (ω − ω_des)` | `controller.py` |
+| Gains from the model | `ωₙ = 4 / (ζ·Tₛ)`, `K_q = 2ωₙ²/b`, `K_ω = (2ζωₙ + a)/b`, with `a` and `b` read from the SINDy hover Jacobian (drag and control effectiveness of each axis). `ζ = 0.7`, `Tₛ = 0.5 s` | `gains_from_identified_model()` |
+| Outer law | `a_cmd = K_p·e_p + K_d·e_v + K_i·∫e_p` (integral gated, anti-windup), thrust vector `m(a_cmd + g·ẑ)` | `04_control/position_controller.py` |
+| Mixer | `[T, τx, τy, τz]ᵀ = M · [f₁ … f₄]ᵀ`, solved with `M⁻¹`; yaw torque is shed first when a rotor would clip | `04_control/mixer.py` |
+| Stopping distance | `d = v² / (2·a_max)`; from 1.0 m/s at 1.0 m/s² this is 0.5 m, which is what was measured | `05_voice_interface/flight.py` (`_braking_target`), `04_control/trajectory.py` |
 
 ### 4.5 The cascade controller
 - **Inner loop** ([`04_control/controller.py`](04_control/controller.py)): a singularity-free quaternion P² law. Its gains come from `gains_from_identified_model()`, which reads the drag-to-inertia ratio of each axis from the SINDy hover Jacobian and applies a standard second-order design rule. Only two numbers are chosen by hand (settling time and damping). When the model changes, the gains recompute.
@@ -228,6 +268,33 @@ Each disturbance was swept one at a time on a `forward` leg. Two fixes were adde
 
 ![Robustness sweeps](data/processed/robustness_plots/robustness.png)
 
+### 6.7 What building this taught us
+
+Each of these was a real failure that was measured and then fixed.
+
+1. **Never pair snapshots across a segment boundary.** At an attitude reset the angle jumps about 2.6 rad against about 0.002 rad of real motion. Squared, one fake pair outweighs a million real ones. It made SINDy look broken (NRMSE 0.99) when the model was fine (0.08).
+2. **Single-axis excitation is rank-deficient.** Roll-only data fills only 2 of the 6 state directions (condition number about 10⁴⁸). `pinv` hides this and `pydmd` returns garbage near 10¹¹. DMDc is cross-checked only on full-rank combined-axis trials.
+3. **Error normalised by state size is meaningless at 2 ms steps.** A model that does nothing scores well. Normalising by the state's *change* makes the do-nothing baseline exactly 1.0.
+4. **Marginal poles are not instability.** An uncontrolled rigid body has θ̇ = ω and no restoring force, so poles on the stability boundary are expected. A strict `< 0` test briefly flipped model selection to DMDc for the wrong reason; a tolerance fixed it.
+5. **A noise ablation with no visible effect proves nothing.** The first range (0 to 0.1 rad/s) was a flat line. The real knee was at 2 to 4 rad/s, so the range was widened.
+6. **Yaw is the expensive axis.** With yaw torque costing about 5x more rotor headroom than roll or pitch, gyro noise saturated rotors on about 70% of steps and thrust was lost. Shedding yaw first fixed it.
+7. **An integral term must not integrate through a move.** The first version added lag and a 0.196 m overshoot. Gating it to "trajectory and drone both nearly at rest" fixed that; the speed gate was swept (0.08 to 1.0 m/s) and 0.15 m/s chosen.
+8. **A design claim did not survive the real plant.** The outer loop was designed as a critically damped double integrator; the real cascade, with inner-loop lag and drag, shows about 0.07 m of ringing. It is reported as measured.
+9. **Sensors lag one step.** MuJoCo computes sensor values from the state before integration, so reading right after `mj_step()` is 2 ms stale. One extra `mj_forward()` call fixed it.
+
+### 6.8 Assumptions we chose and stated
+
+| Quantity | Choice | Why it is stated |
+|---|---|---|
+| Plant | 1.0 kg, arm 0.15 m, X configuration, drag as a generalized force | Fixed in [`docs/TDD.md`](docs/TDD.md) §2 so nothing drifts mid-project |
+| Excitation | PRBS and chirp per axis, deterministic seed per trial | Reproducible across processes (tested) |
+| Smoothing | Savitzky-Golay before any differentiation | Differentiating raw data amplifies noise |
+| Gain design | `ζ = 0.7`, `Tₛ = 0.5 s` are the only hand-chosen numbers | Everything else is computed from the model |
+| Command offsets | 1.5 m lateral, 0.5 m vertical per discrete move | Hover altitude is about 1 m, so a 1.5 m "down" would pass through the floor |
+| Building heights | Estimated from OSM type | OSM has no floor counts |
+| Scale | 1:10 of the real campus | Keeps flight inside the sensible simulator range |
+| Sensors | Ideal IMU, noise injected only in the robustness study | Honest limit, see section 7 |
+
 ---
 
 ## 7. Honest limits
@@ -240,6 +307,14 @@ Each disturbance was swept one at a time on a `forward` leg. Two fixes were adde
 - **Autonomy assumes perfect obstacle perception**, and its one failure (seed 104) is a double pinch that a planner with no lookahead cannot foresee.
 - **Speech recognition makes mistakes.** The small Vosk model mishears words; the HEARD LOG shows exactly what it heard.
 - **Results are from simulation** at 1:10 scale. No hardware flight was done.
+
+### Future work
+- A state estimator (Kalman or complementary filter) between noisy IMU data and the controller.
+- Controllability and reachability analysis of the identified model, to bound which attitudes and accelerations it can reach.
+- Extend DMDc beyond hover with a Koopman lift, so it can be compared with SINDy across the full envelope.
+- Surveyed building heights, and a roof-aware photo correction for tall buildings.
+- Obstacle perception from simulated sensors instead of perfect knowledge, and lookahead in the avoidance planner.
+- A hardware flight on a real quadrotor with the same frozen model.
 
 ---
 
@@ -285,6 +360,22 @@ Double-click **`RUN.bat`** and pick a number:
 ```
 `REBUILD_RESULTS.bat` runs the whole chain and collects every plot into `results/`.
 
+### What the 150 tests cover
+
+| Test file | Tests | Checks |
+|---|---|---|
+| `test_autonomy.py` | 34 | Moving obstacles, scene fairness, avoidance, no stalls |
+| `test_voice_interface.py` | 24 | Classifier, synonyms, end-to-end voice pipeline, live logger, safety clamp |
+| `test_goto.py` | 23 | Place matching, route planning, curved paths, landing on roofs |
+| `test_natural_motion.py` | 11 | Continuous moves and braking |
+| `test_stability.py` | 10 | Cascade and loop stability |
+| `test_mixer.py`, `test_inverse_mixer.py` | 12 | Rotor mixing, both directions |
+| `test_robustness.py` | 8 | Noise, wind, payload, yaw-priority mixer, integral |
+| `test_landing.py` | 7 | Touchdown on ground and roofs |
+| `test_identification_physics.py` | 6 | Learned coefficients match simulator truth within 2-6% |
+| `test_minimap.py`, `test_campus.py`, `test_web_sim_parity.py` | 11 | Map window, campus scene, browser simulator parity |
+| `test_scene_physics_inert.py`, `test_reproducibility.py` | 4 | Visual layers add no physics; seeds reproduce across processes |
+
 ### Rebuild the campus
 ```powershell
 .\.venv\Scripts\python.exe 01_simulation\models\fetch_satellite.py   # photo (cached after first run)
@@ -320,6 +411,8 @@ More detail: [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md) (code map), [`do
 ---
 
 ## 10. Team and branches
+
+B.Tech (AI Engineering), School of Artificial Intelligence, Amrita School of Engineering, Coimbatore, Amrita Vishwa Vidyapeetham.
 
 | Name | Roll no. |
 |---|---|
