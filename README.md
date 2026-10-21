@@ -21,6 +21,8 @@ further attempts were built as separate branches of this same repo:
 - **[`drone_mujoco`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_mujoco)** — a MuJoCo-based voice-controlled quadrotor with a SINDy-identified data-driven attitude controller (full pipeline: excitation → identification → validation → cascaded control → live voice demo).
 - **[`drone_gazebo`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_gazebo)** — a PX4 + Gazebo voice-controlled quadrotor, also using SINDy/DMDc identification.
 
+A third, PyBullet-based attempt lives on the **[`tittu-09-voice-drone`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/tittu-09-voice-drone)** branch, in [`pybullet_voice_drone/`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/tittu-09-voice-drone/pybullet_voice_drone): a voice- and keyboard-controlled quadrotor flying over a generated city plaza with moving traffic, four camera modes, stop-before-obstacle detection, measured commands (*"forward 3 meters"*), return-home and CSV flight logging. It is a kinematic visualisation (commanded velocities, not simulated rotor thrust), so it complements rather than replaces the dynamics-based simulators above.
+
 ---
 
 
