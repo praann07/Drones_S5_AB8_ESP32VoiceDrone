@@ -20,7 +20,7 @@
 | 3 | Ch. Virinchi | CB.SC.U4AIE24158 | cb.sc.u4aie24158@cb.students.amrita.edu |
 | 4 | K. Jatin Chandra Gupta | CB.SC.U4AIE24162 | cb.sc.u4aie24162@cb.students.amrita.edu |
 
-This README describes the `tittu-09-voice-drone` branch. All of its code is in [`pybullet_voice_drone/`](pybullet_voice_drone/); the short usage guide is [`pybullet_voice_drone/README.md`](pybullet_voice_drone/README.md). Other attempts at the same drone are listed in [Section 19](#19-other-work-in-this-repository).
+This README describes the `Drone_pybullet` branch. All of its code is in [`pybullet_voice_drone/`](pybullet_voice_drone/); the short usage guide is [`pybullet_voice_drone/README.md`](pybullet_voice_drone/README.md). Other attempts at the same drone are listed in [Section 19](#19-other-work-in-this-repository).
 
 ---
 

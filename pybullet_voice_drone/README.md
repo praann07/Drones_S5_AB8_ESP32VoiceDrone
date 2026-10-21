@@ -72,7 +72,7 @@ The three launchers only differ in their defaults – all of them accept the sam
 ## 🚀 Installation
 
 ```bash
-git clone --branch tittu-09-voice-drone --single-branch https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone.git
+git clone --branch Drone_pybullet --single-branch https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone.git
 cd Drones_S5_AB8_ESP32VoiceDrone/pybullet_voice_drone
 ```
 
@@ -250,13 +250,13 @@ They cover the command parser (including distances and angles), flight modes, me
 
 ## 📤 Working in the team repository
 
-This folder lives on the `tittu-09-voice-drone` branch of the team repository. Commit and push to that branch only:
+This folder lives on the `Drone_pybullet` branch of the team repository. Commit and push to that branch only:
 
 ```bash
 git status
 git add pybullet_voice_drone
 git commit -m "Describe the change"
-git push origin HEAD:refs/heads/tittu-09-voice-drone
+git push origin HEAD:refs/heads/Drone_pybullet
 ```
 
 ---
