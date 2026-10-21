@@ -1,0 +1,22 @@
+{
+ "note": "scripted run, campus world 1:10 scale, speeds in simulation metres per second",
+ "rest_threshold_m_s": 0.05,
+ "stops": [
+  {
+   "move": "forward",
+   "speed_at_stop_command_m_s": 0.999,
+   "time_to_rest_s": 0.92,
+   "braking_distance_m": 0.502,
+   "final_speed_m_s": 0.008,
+   "altitude_change_m": 0.019
+  },
+  {
+   "move": "left",
+   "speed_at_stop_command_m_s": 0.997,
+   "time_to_rest_s": 0.92,
+   "braking_distance_m": 0.501,
+   "final_speed_m_s": 0.0082,
+   "altitude_change_m": 0.001
+  }
+ ]
+}
