@@ -5,7 +5,7 @@
 
 For the code-level map (module wiring, runbooks, debugging table), see [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md).
 
-All numbers below were re-measured on 2026-10-19 (150/150 tests as of 2026-10-21, 24/24 trials, 5/5 chained, preemption, 67/67 gauntlet, robustness sweep). The full history of decisions and mistakes is in [`CLAUDE.md`](CLAUDE.md).
+All numbers below were re-measured on 2026-10-19 (150/157 tests as of 2026-10-21, 24/24 trials, 5/5 chained, preemption, 67/67 gauntlet, robustness sweep). The full history of decisions and mistakes is in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -64,7 +64,7 @@ pip install -r requirements.txt
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
-Expected: `150 passed`.
+Expected: `157 passed`.
 
 **Regenerate the evidence stage by stage** (data files in `data/raw/` are produced by the first command):
 ```powershell
@@ -99,7 +99,7 @@ Or double-click `REBUILD_RESULTS.bat` to run everything and log each step to `re
 | `04_control/position_controller.py`, `trajectory.py` | Outer loop and planner (standard physics) |
 | `04_control/mixer.py` | Torque-to-rotor mapping, including yaw-priority desaturation |
 | `05_voice_interface/flight.py` | Real-time cascade driving MuJoCo through the IMU sensors |
-| `tests/` | 150 tests: physics recovery, mixer, reproducibility, scene-is-physics-inert, voice, natural motion, robustness, autonomy |
+| `tests/` | 157 tests: physics recovery, mixer, reproducibility, scene-is-physics-inert, voice, natural motion, robustness, autonomy |
 | `04_control/avoidance.py`, `01_simulation/models/obstacles.py`, `05_voice_interface/run_autonomous.py` | Autonomous patrol among moving obstacles (section 6) |
 | `docs/PRD.md`, `docs/TDD.md` | Requirements and the technical design decisions (quaternion constraint handling, DMDc regime, validation order) |
 
@@ -140,7 +140,7 @@ Evidence: `data/processed/autonomy/autonomy_paths.png`, `autonomous_patrol.gif` 
 ## 7. Known limits (stated up front)
 
 - **Everything is simulation.** Sensors are idealised unless noise is injected; the identified model's validity is limited to the simulated excitation envelope.
-- **DMDc is only valid near hover.** Outside that regime it degrades (0.70 R² held-out), and this is reported, never counted as a pass.
+- **DMDc is only valid near hover.** Outside that regime it degrades (one-step NRMSE about 0.70 held-out, where 1.0 is a model that does nothing), and this is reported, never counted as a pass.
 - **Marginal poles are expected.** 3 of 6 identified poles are marginal kinematic integrators (θ̇ = ω), as physics requires for an uncontrolled rigid body.
 - **Yaw is never commanded.** Sustained yaw tracking was tried and destabilised the cascade; it would need its own inner-loop validation.
 - **Nominal forward leg settles in about 2.96 s** (curved quintic Bezier path), slower than the 1.87 s of the Stage D cascade study, which uses the earlier trapezoidal planner.

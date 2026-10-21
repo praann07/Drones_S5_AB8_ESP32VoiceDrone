@@ -11,7 +11,7 @@
   <img alt="Simulator" src="https://img.shields.io/badge/simulator-MuJoCo-orange">
   <img alt="Identification" src="https://img.shields.io/badge/identification-SINDy%20%2B%20DMDc-9C27B0">
   <img alt="SINDy R2" src="https://img.shields.io/badge/SINDy%20held--out%20R%C2%B2-0.9946-brightgreen">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-150%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-157%20passing-brightgreen">
   <img alt="Voice" src="https://img.shields.io/badge/voice-Vosk%20offline-blue">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-lightgrey">
 </p>
@@ -39,11 +39,11 @@ Runs in MuJoCo on a 1:10 scale model of the real campus, built from OpenStreetMa
 
 | | |
 |---|---|
-| **What was learned from data** | The drone's rotational dynamics: SINDy keeps **44 of 156** candidate terms and predicts held-out data with **R² = 0.9946** |
+| **What was learned from data** | The drone's rotational dynamics: SINDy keeps **44 of 156** candidate coefficients (26 terms in each of 6 equations) and predicts held-out data with **R² = 0.9946** |
 | **What it was checked against** | DMDc (a linear alternative), with held-out trials, 11 s rollouts, eigenvalues, sparsity and noise ablations |
 | **How it flies** | Outer position loop (standard physics) feeding an inner quaternion attitude loop whose gains are **calculated from the learned model**, not hand-tuned |
 | **How you command it** | Offline speech (Vosk) or typed text: 8 moves, `land`, and `go to <building>` for 31 named buildings |
-| **How well it works** | 24/24 voice trials, 5/5 chained, 67/67 maneuver gauntlet, braking in 0.92 s over 0.50 m, 150 automated tests passing |
+| **How well it works** | 24/24 voice trials, 5/5 chained, 67/67 maneuver gauntlet, braking in 0.92 s over 0.50 m, 157 automated tests passing |
 | **How it was stressed** | Sensor noise, wind, wrong payload mass, mid-flight command reversal, moving obstacles |
 
 ---
@@ -93,7 +93,7 @@ Each stage had a pass/fail gate that had to be met before the next one started.
 | Stage | What happens | Key result | Code |
 |---|---|---|---|
 | **A. Excitation** | Open-loop random (PRBS) and sweep (chirp) rotor inputs on each axis, with no controller active, so the data is rich | Varied, non-flat responses on every axis; trials split into train and held-out **by whole trial** | [`01_simulation/`](01_simulation) |
-| **B. Identification** | Smooth the data (Savitzky-Golay), then fit **SINDy** and **DMDc** on the same trials | SINDy held-out R² **0.9946**, 44/156 terms. DMDc R² 0.9926 near hover only | [`02_identification/`](02_identification) |
+| **B. Identification** | Smooth the data (Savitzky-Golay), then fit **SINDy** and **DMDc** on the same trials | SINDy held-out R² **0.9946**, 44/156 coefficients. DMDc R² 0.9926 near hover only | [`02_identification/`](02_identification) |
 | **C. Validation** | One-step error, then 11 s open-loop rollouts, eigenvalues, sparsity and noise ablations, head-to-head | **SINDy selected.** 0/7 rollouts diverged | [`03_validation/`](03_validation) |
 | **D. Control** | Inner quaternion loop (gains from the model) and outer position loop (standard physics) | Settling 0.56-0.86 s inner, 1.87 s full cascade, final error 0.0006 m | [`04_control/`](04_control) |
 | **E. Voice demo** | Speech to command to waypoint to trajectory to cascade to MuJoCo | 24/24 trials, 5/5 chained, 36 ms processing latency | [`05_voice_interface/`](05_voice_interface) |
@@ -108,16 +108,16 @@ A full nonlinear 6-DOF quadrotor in MuJoCo: X configuration, four rotors, 1.0 kg
 Savitzky-Golay smoothing is applied before any differentiation. Held-out data means **separate trials**, never a slice of one trajectory.
 
 ### 4.2 SINDy: learning the rotational dynamics
-SINDy (Sparse Identification of Nonlinear Dynamics) is given the four rotor thrusts and the measured angular velocity, and must find the equation connecting them. It builds a library of **156** candidate terms and runs **STLSQ** (sequentially thresholded least squares): fit, drop the weakest terms, refit, repeat.
+SINDy (Sparse Identification of Nonlinear Dynamics) is given the four rotor thrusts and the measured angular velocity, and must find the equation connecting them. It builds a library of **26** candidate terms for each of the **6** state equations (156 coefficients in all) and runs **STLSQ** (sequentially thresholded least squares): fit, drop the weakest terms, refit, repeat.
 
-- **44 terms survive.** They recover the true control effectiveness, drag, gyroscopic cross-term and kinematics to within **2-6%** of the simulator's ground truth ([`tests/test_identification_physics.py`](tests/test_identification_physics.py)). That match is the evidence that physics was learned, not just a curve.
+- **44 coefficients survive.** They recover the true control effectiveness, drag, gyroscopic cross-term and kinematics to within **2-6%** of the simulator's ground truth ([`tests/test_identification_physics.py`](tests/test_identification_physics.py)). That match is the evidence that physics was learned, not just a curve.
 - **Quaternions are never fitted raw.** The attitude is handled in local coordinates with a reset at segment boundaries, and fit pairs are never formed across a boundary (a fake pair there outweighed a million real ones).
 - Sparsity is chosen by a parsimony rule on validation data, not by R² alone, which would pick the densest model (127 terms for +0.0002 R²).
 
 ### 4.3 DMDc: the linear comparison
 DMDc (Dynamic Mode Decomposition with control) fits `x₊ = A·x + B·u` by least squares. It is SINDy with a **linear-only library**, no sparsity, and a discrete-time form.
 
-It matches SINDy near hover (NRMSE 0.0825 vs 0.0789) but **degrades to R² 0.70 outside hover**, because a linear model cannot hold the nonlinear terms. So it is reported honestly as valid near hover only, and never used as a pass outside that regime.
+It matches SINDy near hover (NRMSE 0.0825 vs 0.0789) but **degrades to a one-step NRMSE of about 0.70 outside hover** (where 1.0 is a model that does nothing), because a linear model cannot hold the nonlinear terms. So it is reported honestly as valid near hover only, and never used as a pass outside that regime.
 
 ### 4.4 Validation and model selection
 | Check | Result |
@@ -136,12 +136,12 @@ With state `x = (θ, ω)` (attitude in local coordinates, body rates) and rotor 
 
 | Piece | Equation | Where |
 |---|---|---|
-| SINDy model | `ω̇ = Θ(ω, u) · Ξ`, with `Θ` a 156-term library and `Ξ` sparse (44 non-zero rows) | `02_identification/sindy_fit.py` |
+| SINDy model | `ω̇ = Θ(ω, u) · Ξ`, with `Θ` a 26-term library and `Ξ` a 6×26 matrix of which only 44 entries are non-zero | `02_identification/sindy_fit.py` |
 | STLSQ | repeat: `Ξ ← argmin ‖ω̇ − ΘΞ‖²`, then zero every `|Ξᵢⱼ| < λ` | `sindy_fit.py` |
 | DMDc | `xₖ₊₁ = A·xₖ + B·uₖ`, least squares on snapshot pairs | `02_identification/dmdc_fit.py` |
 | Quaternion error | `qₑ = q_ref ⊗ q*`, use the vector part `qₑ,vec` (about half the angle error) | `04_control/controller.py` |
 | Inner law | `τ = −K_q · sign(qₑ,w) · qₑ,vec − K_ω · (ω − ω_des)` | `controller.py` |
-| Gains from the model | `ωₙ = 4 / (ζ·Tₛ)`, `K_q = 2ωₙ²/b`, `K_ω = (2ζωₙ + a)/b`, with `a` and `b` read from the SINDy hover Jacobian (drag and control effectiveness of each axis). `ζ = 0.7`, `Tₛ = 0.5 s` | `gains_from_identified_model()` |
+| Gains from the model | `ωₙ = 4 / (ζ·Tₛ)`, `K_q = 2ωₙ²/b`, `K_ω = (2ζωₙ + a)/b`, with `a` (negative, equal to −drag/inertia) and `b` (control effectiveness, 1/inertia) read from the SINDy hover Jacobian for each axis. `ζ = 0.7`, `Tₛ = 0.5 s` | `gains_from_identified_model()` |
 | Outer law | `a_cmd = K_p·e_p + K_d·e_v + K_i·∫e_p` (integral gated, anti-windup), thrust vector `m(a_cmd + g·ẑ)` | `04_control/position_controller.py` |
 | Mixer | `[T, τx, τy, τz]ᵀ = M · [f₁ … f₄]ᵀ`, solved with `M⁻¹`; yaw torque is shed first when a rotor would clip | `04_control/mixer.py` |
 | Stopping distance | `d = v² / (2·a_max)`; from 1.0 m/s at 1.0 m/s² this is 0.5 m, which is what was measured | `05_voice_interface/flight.py` (`_braking_target`), `04_control/trajectory.py` |
@@ -202,8 +202,8 @@ The distance matches the physics: stopping from 1.0 m/s at the planner's 1.0 m/s
 
 | Metric | Value |
 |---|---|
-| SINDy held-out derivative R² / one-step NRMSE | **0.9946** / **0.0786** (44 of 156 terms) |
-| DMDc held-out R² / NRMSE (near hover) | 0.9926 / 0.0825 (0.70 outside hover) |
+| SINDy held-out derivative R² / one-step NRMSE | **0.9946** / **0.0786** (44 of 156 coefficients) |
+| DMDc held-out R² / NRMSE (near hover) | 0.9926 / 0.0825 (NRMSE about 0.70 outside hover) |
 | Coefficients vs simulator truth | within **2-6%** |
 | Rollouts diverged (11 s) | SINDy **0/7**, DMDc 0/16 (hover only) |
 
@@ -341,7 +341,7 @@ Double-click **`RUN.bat`** and pick a number:
 | **6** | Rebuild every result and plot (several minutes) |
 
 ### What to say
-`forward`, `back`, `left`, `right`, `up`, `down` keep moving until a building, the map edge or the next command. `stop` or `hover` brakes to rest. `land` descends onto the ground or a roof. `go to <building>` flies a curved route around the buildings, for example "go to central library". The window also has click buttons for every command, a live LISTENING line and a HEARD LOG.
+`forward`, `back`, `left`, `right`, `up`, `down` keep moving until a building, the map edge or the next command. `stop` or `hover` brakes to rest. `land` descends onto the ground or a roof. `go to <building>` flies a curved route around the buildings, for example "go to central library". The window also has click buttons for every command, a live LISTENING line and a HEARD LOG. A fourth window, **Flight Status**, draws altitude, speed, distance to the nearest building, x/y position and a command timeline over the last 60 s (pause button; the data is saved as a CSV next to the flight log). Start the demo with `--no-graphs` to hide it.
 
 ### Reproduce the results
 ```powershell
@@ -356,11 +356,11 @@ Double-click **`RUN.bat`** and pick a number:
 .\.venv\Scripts\python.exe 05_voice_interface\run_robustness.py     # noise, wind, payload
 .\.venv\Scripts\python.exe 05_voice_interface\run_autonomous.py --render   # moving obstacles
 .\.venv\Scripts\python.exe 05_voice_interface\record_demo_video.py  # the video above
-.\.venv\Scripts\python.exe -m pytest                                # 150 tests
+.\.venv\Scripts\python.exe -m pytest                                # 157 tests
 ```
 `REBUILD_RESULTS.bat` runs the whole chain and collects every plot into `results/`.
 
-### What the 150 tests cover
+### What the 157 tests cover
 
 | Test file | Tests | Checks |
 |---|---|---|
@@ -374,6 +374,7 @@ Double-click **`RUN.bat`** and pick a number:
 | `test_landing.py` | 7 | Touchdown on ground and roofs |
 | `test_identification_physics.py` | 6 | Learned coefficients match simulator truth within 2-6% |
 | `test_minimap.py`, `test_campus.py`, `test_web_sim_parity.py` | 11 | Map window, campus scene, browser simulator parity |
+| `test_status_graphs.py` | 7 | Live flight-status graphs: sampling rate, values equal the controller state, events, pause, CSV |
 | `test_scene_physics_inert.py`, `test_reproducibility.py` | 4 | Visual layers add no physics; seeds reproduce across processes |
 
 ### Rebuild the campus
@@ -397,7 +398,7 @@ Double-click **`RUN.bat`** and pick a number:
 ├── 04_control/                quaternion controller, position loop, mixer, trajectories,
 │                              route planner, avoidance planner
 ├── 05_voice_interface/        voice input, commands, flight wrapper, demo, trials, recording
-├── tests/                     150 automated tests
+├── tests/                     157 automated tests
 ├── results/                   plots, data and the gauntlet summary (RESULTS.md)
 ├── docs/                      PRD, TDD, design flow, codebase guide, images, recordings
 ├── web/                       browser simulator (localhost only)
@@ -405,6 +406,8 @@ Double-click **`RUN.bat`** and pick a number:
 ├── UNDERSTAND_MY_PROJECT.md          guided tour of every file
 └── CLAUDE.md                  stage-gate log and decision history
 ```
+
+New to the project? Start with [`PROJECT_EXPLAINED.md`](PROJECT_EXPLAINED.md), a plain-language walkthrough of the whole pipeline and every piece of maths.
 
 More detail: [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md) (code map), [`docs/TDD.md`](docs/TDD.md) (design), [`ONBOARDING.md`](ONBOARDING.md) (what is claimed and how to check it).
 

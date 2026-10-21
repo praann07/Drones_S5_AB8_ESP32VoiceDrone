@@ -47,6 +47,7 @@ from world import CampusWorld, CAMPUS_SCENE  # noqa: E402
 from trajectory import POSITION_TOLERANCE_M  # noqa: E402
 from commands import parse_goto, GOTO_COMMAND, ALL_COMMANDS  # noqa: E402
 from minimap import MiniMap, REDRAW_S as MAP_REDRAW_S  # noqa: E402
+from status_graphs import StatusGraphs, REDRAW_S as GRAPHS_REDRAW_S  # noqa: E402
 from places import PlaceBook  # noqa: E402
 
 SESSIONS_DIR = ROOT / "data" / "processed" / "voice_sessions"
@@ -386,6 +387,8 @@ def main():
                          "instead of flying on until a building, the map edge or 'stop'")
     ap.add_argument("--no-map", action="store_true",
                     help="don't open the live top-down map window (minimap.py)")
+    ap.add_argument("--no-graphs", action="store_true",
+                    help="don't open the live flight-status graphs window (status_graphs.py)")
     ap.add_argument("--device", type=int, default=None,
                     help="Microphone device index from sounddevice")
     ap.add_argument("--duration", type=float, default=None,
@@ -438,6 +441,10 @@ def main():
     # heading, trail and target (display only, reads fc state).
     minimap = None if args.no_map else MiniMap(args.world)
     next_map = time.perf_counter()
+    # Fourth window: altitude, speed, wall distance, x/y and a command
+    # timeline over the last minute (display only, reads fc state).
+    graphs = None if args.no_graphs else StatusGraphs()
+    next_graphs = time.perf_counter()
     t_start = time.perf_counter()
 
     import mujoco as _mj
@@ -517,6 +524,8 @@ def main():
                 entry = f"{heard!r} -> GO TO {place}" + ("" if res["ok"] else "  (NO ROUTE)")
                 print(f"[dispatch] {entry}", flush=True)
                 heard_log.append(entry)
+                if graphs is not None:
+                    graphs.event(t_sim, "goto" if res["ok"] else "no_route", place)
                 if res["ok"]:
                     flight_logger.on_dispatch("goto", heard, p_before,
                                               res["target"] if res["target"] is not None else p_before,
@@ -527,6 +536,8 @@ def main():
                 transcript = meta.get("transcript", "")
                 print(f"[heard] {format_heard_entry(transcript, None)}", flush=True)
                 heard_log.append(format_heard_entry(transcript, None))
+                if graphs is not None:
+                    graphs.event(t_sim, "heard_miss", transcript)
             if cmd is not None:
                 last_cmd = cmd
                 last_meta = meta
@@ -544,6 +555,8 @@ def main():
                 transcript = meta.get("transcript", "") if meta else ""
                 print(f"[dispatch] {cmd}  (transcript: {transcript!r})", flush=True)
                 heard_log.append(format_heard_entry(transcript, cmd))
+                if graphs is not None:
+                    graphs.event(t_sim, "command", cmd)
                 classify_ms = (meta.get("latencies_ms", {}).get("classify", 0.0) if meta else 0.0)
                 flight_logger.on_dispatch(cmd, transcript, p_before, lat["target"],
                                            classify_ms, lat["trajectory"], att_err_before)
@@ -564,6 +577,8 @@ def main():
                 steps += 1
             if steps == MAX_STEPS_PER_FRAME:   # fell behind (e.g. window dragged): don't sprint to catch up
                 t_start = time.perf_counter() - t_sim
+            if graphs is not None:
+                graphs.record(fc, t_sim)          # self-throttled to 10 samples per simulated second
             _apply_camera()
             viewer.sync()
 
@@ -575,6 +590,12 @@ def main():
             if minimap is not None and time.perf_counter() >= next_map:
                 minimap.update_from(fc)
                 next_map = time.perf_counter() + MAP_REDRAW_S
+            # the graphs yield to the simulation: no repaint on a frame that
+            # already ran flat out to catch up with the wall clock
+            if (graphs is not None and steps < MAX_STEPS_PER_FRAME
+                    and time.perf_counter() >= next_graphs):
+                graphs.update()
+                next_graphs = time.perf_counter() + GRAPHS_REDRAW_S
             time.sleep(0.001)
 
         flight_logger.on_exit(fc.position(), fc.attitude_error_deg(IDENTITY_Q))
@@ -583,6 +604,9 @@ def main():
             print(f"[log] saved this flight -> {saved_path.name}  "
                   f"(run plot_2d_telemetry.py / plot_3d_trajectory.py now to see it)",
                   flush=True)
+        if graphs is not None and graphs.hist.rows:
+            status_path = graphs.save_csv(SESSIONS_DIR / f"{flight_logger.path.stem}_status.csv")
+            print(f"[log] status graphs data -> {status_path.name}", flush=True)
 
     import matplotlib.pyplot as plt
     plt.close("all")
