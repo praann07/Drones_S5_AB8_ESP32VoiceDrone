@@ -1,6 +1,6 @@
 # 🎙️ Voice-Controlled Quadcopter Drone in PyBullet 🚁
 
-An interactive 3D quadcopter simulation built with **PyBullet** and **SpeechRecognition**. Fly it by voice, fall back to the keyboard at any moment, let it stop itself before it hits anything, and get a CSV flight log of everything it did.
+An interactive 3D quadcopter simulation built with **PyBullet** and **SpeechRecognition**. Fly it by voice, fall back to the keyboard at any moment, let it stop itself before it hits anything, watch it all happen in a living city plaza, and get a CSV flight log of everything it did.
 
 ---
 
@@ -12,8 +12,10 @@ An interactive 3D quadcopter simulation built with **PyBullet** and **SpeechReco
 - **📏 Measured commands** – say *"forward 3 meters"*, *"up ten feet"* or *"rotate left 90 degrees"* and the drone moves exactly that far (or until an obstacle stops it), then hovers. Plain *"forward"* keeps going until you say *"stop"*.
 - **🏠 Return home** – *"go home"* (or `H`) flies back over the take-off point and lands on the pad (it stops short if an obstacle is in the way).
 - **🚁 Flight modes** – the drone starts on the ground and has to take off; it lands on the ground (not hovering half a metre above it); acceleration is smooth, not teleporting; the drone leans into its direction of travel and the rotors only spin while it is flying.
-- **🎨 Look** – sky-blue backdrop, a gridded floor with sharp shadows (so height is easy to judge), hazard-striped pillars with beacons that glow as the drone approaches, and a home pad with an H. The drone has landing skids, a camera gimbal, a GPS puck, red/green/white navigation lights (the white one strobes), and translucent rotor discs that fade in as the rotors spin up.
-- **🎥 Cameras & overlays** – a follow camera that keeps whatever angle/zoom you set with the mouse, or a fixed observer view (`C` key / `--camera fixed`). A colour-coded status line (red = held at an obstacle, cyan = taking off/landing, green = hovering, yellow = moving) floats above the drone with command, height, speed, heading and the last phrase heard. A marker on the floor under the drone joined to it by a thin line shows its height, a sensor ray shows what is ahead (green clear → red close), a flight trail coloured by speed fades behind it (`P`), and `Z` draws each obstacle's safety zone.
+- **🌆 A living city plaza** – you fly over a paved plaza with a helipad (yellow ring, green lights), tree planters, benches and lamp posts, surrounded by a ring road with **moving traffic** and crosswalks, pedestrians strolling the sidewalks, and a skyline of textured buildings (taller on the side away from the sun, so none of them shades the plaza). The obstacles are kiosk towers that grow a red halo as the drone nears. Everything is built from PyBullet primitives and generated textures (`scene_assets.py`, `scene_city.py`) - no downloaded assets. `--scene simple` gives a plain floor and pillars for slow machines.
+- **🎨 The drone** – landing skids, a camera gimbal, a GPS puck, red/green/white navigation lights (the white one strobes; the rear lights flash red on an obstacle stop) and translucent rotor discs that appear as the rotors spin up. Sharp sun shadows make height easy to judge.
+- **🎥 Cameras & overlays** – press `C` (or say *"camera"*) to cycle four cameras: **follow** (keeps whatever angle and zoom you set with the mouse), **chase** (behind the drone, turning with it), **top** (straight down, like a mission map) and **fixed**. Labels attached to the drone show its state (red = held at an obstacle, cyan = taking off/landing, green = hovering, yellow = moving), position/speed/heading, the distance to the nearest obstacle and the last phrase heard; `[` and `]` resize them. A marker on the floor under the drone, joined to it by a thin line, shows its height; a sensor ray shows what is ahead (green clear → red close); a flight trail coloured by speed fades behind it (`P`); `Z` draws each obstacle's safety zone.
+- **⚡ Smooth** – in the full city on integrated Intel graphics the simulation loop spends about 3 ms of its 8 ms budget per frame. Every call into the window was measured, and the expensive ones (rewriting text, changing colours) are rationed: see the note in `Hud`.
 - **🧩 One-piece drone model** – `drone.urdf` loads as a single multibody with four counter-rotating propellers, so the whole drone moves in the same instant (no glitching parts).
 - **📊 Telemetry** – every command and one sample per second while airborne are appended to `drone_data.csv`.
 
@@ -23,29 +25,36 @@ An interactive 3D quadcopter simulation built with **PyBullet** and **SpeechReco
 
 ## 📸 Screenshots
 
-| Simulation Overview | Obstacle Avoidance Environment |
+| City plaza overview | Held in front of an obstacle (the tower glows) |
 | :---: | :---: |
-| ![PyBullet Drone](Physics%20Server0.png) | ![Obstacle Simulation](Physics%20Server1.png) |
-| ![Flight View](Physics%20Server2.png) | ![Perspective Camera](Physics%20Server3.png) |
+| ![City overview](screenshots/city_overview.png) | ![Obstacle stop](screenshots/city_obstacle_stop.png) |
+| **Chase camera** | **Top camera** |
+| ![Chase camera](screenshots/city_chase.png) | ![Top camera](screenshots/city_top_view.png) |
+
+These are frames from the window's own renderer. The labels, sensor ray, floor line and trail are drawn by the window itself and do not appear in such captures.
+
+The screenshots of the first version are in `legacy/old_screenshots/`.
 
 ---
 
 ## 📂 Project Structure
 
 ```text
-Voice_Drone_PyBullet/
-├── drone_core.py                 # Everything: command parser, flight model, obstacle handling, scene, voice, telemetry, main loop
+pybullet_voice_drone/
+├── drone_core.py                 # Command parser, flight model, obstacle handling, drone model, cameras, HUD, voice, telemetry, main loop
+├── scene_city.py                 # The city: plaza, roads, buildings, trees, kiosks, helipad, traffic, pedestrians
+├── scene_assets.py               # Generates the textures and meshes the city uses (pure Python)
 ├── main.py                       # Launcher: keyboard mode (voice/obstacles optional)
 ├── Voice_Drone_PyBullet.py       # Launcher: voice mode
 ├── obstacles.py                  # Launcher: voice mode + obstacles (the drone stops before them)
-├── drone.urdf                    # Drone model (one multibody, 4 spinning propeller joints, lights, rotor discs)
-├── assets/ground.png             # Floor texture (regenerated automatically if you delete it)
+├── drone.urdf                    # Drone model (one multibody, 4 spinning propellers, lights, rotor discs)
+├── assets/                       # Generated textures (recreated automatically if deleted); assets/mesh/ is not tracked
+├── screenshots/                  # Pictures used by this README
 ├── test_drone_core.py            # Headless unit tests
 ├── drone_data.csv                # Telemetry log (appended on every run)
 ├── drone_command_data.csv        # Old command log from an earlier version (no longer written)
-├── legacy/                       # The original scripts, kept for reference (not maintained)
-├── requirements.txt
-└── Physics Server*.png           # Screenshots
+├── legacy/                       # The original scripts and screenshots, kept for reference (not maintained)
+└── requirements.txt
 ```
 
 The three launchers only differ in their defaults – all of them accept the same options (see below).
@@ -63,8 +72,8 @@ The three launchers only differ in their defaults – all of them accept the sam
 ## 🚀 Installation
 
 ```bash
-git clone https://github.com/your-username/Voice_Drone_PyBullet.git
-cd Voice_Drone_PyBullet
+git clone --branch tittu-09-voice-drone --single-branch https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone.git
+cd Drones_S5_AB8_ESP32VoiceDrone/pybullet_voice_drone
 ```
 
 **Windows (PowerShell):**
@@ -104,8 +113,11 @@ Options (all launchers):
 | `--voice` / `--no-voice` | Turn the microphone on or off |
 | `--obstacles` / `--no-obstacles` | Spawn obstacles and make the drone detect them |
 | `--on-obstacle stop\|steer` | What the drone does when an obstacle is in its way: `stop` before it (default) or `steer` around it |
+| `--language CODE` | Language for the speech service: `en-IN` (Indian English, default), `en-US`, `en-GB`, ... |
 | `--console` | Also accept commands typed into the terminal (handy without a microphone) |
-| `--camera follow\|fixed` | Starting camera mode |
+| `--scene city\|simple` | `city` (default): plaza, roads, traffic, skyline. `simple`: plain floor and pillars, lighter on slow machines |
+| `--camera follow\|chase\|top\|fixed` | Starting camera (`C` cycles through them) |
+| `--hud-size SCALE` / `--no-hud` | Scale of the labels above the drone (`[` and `]` change it while flying), or hide them |
 | `--no-trail` / `--zones` | Start with the flight trail hidden / the obstacle safety zones drawn |
 | `--telemetry-file PATH` / `--no-log` | Where to log flight data, or don't |
 | `--duration SECONDS` | Exit automatically (useful for smoke tests) |
@@ -134,7 +146,7 @@ Speak (or type with `--console`) one command at a time. Several wordings work fo
 | **stop**, halt, freeze, hover, hold | Brake and hover (also cancels a measured move or return home) |
 | **go home**, return home, go back home | Fly back over the take-off point and land |
 | **land** | Descend to the ground and stop the rotors |
-| **camera** | Toggle follow / fixed camera |
+| **camera** | Cycle the camera: follow, chase, top, fixed |
 | **trail** | Show / hide the flight trail |
 | **zones**, safety zones | Show / hide the obstacle safety zones |
 | **exit**, quit | Close the simulation |
@@ -150,6 +162,15 @@ Speak (or type with `--console`) one command at a time. Several wordings work fo
 Distances are capped at 50 m and turns at 720°. A measured move gives up (and hovers) if the drone is pinned against the world limit or ceiling, or if it takes far too long to get there.
 
 While the drone is on the ground only *take off* and *up* are accepted.
+
+### Voice tips
+
+- **Language.** The speech service is set to Indian English (`--language en-IN`); try `--language en-US` or `en-GB` if that suits your accent better.
+- **Several guesses.** Google returns ranked guesses for each phrase. The first of the top three that is a drone command is used, so a phrase whose best guess is *"for this"* can still be understood as *"forward"*.
+- **No dead time.** Listening carries on while the previous phrase is being transcribed, so commands spoken one after another are all heard.
+- **See what it heard.** The console prints `YOU SAID: ...`, plus `(heard "..." - took "...")` when a lower guess was used and `(other guesses: ...)` when nothing matched. If one command keeps failing, those lines show what the recogniser hears instead.
+- **Forgiving matching.** Split words are joined (*for word*, *back word*), one-letter slips are repaired (*forwad*, *takeof*), and *rotating* / *turning* count as *rotate* / *turn*. Unrelated speech is never guessed into a command; it is simply reported as not recognised.
+- **Privacy.** Everything the microphone hears, background talk included, is sent to Google's speech service.
 
 ---
 
@@ -167,9 +188,10 @@ Click the PyBullet window first. PyBullet's own debug shortcuts (W = wireframe, 
 | **`L`** | Land |
 | **`H`** | Return home and land |
 | **`Space`** | Stop and hover |
-| **`C`** | Toggle camera |
+| **`C`** | Cycle the camera: follow, chase, top, fixed |
 | **`P`** | Show / hide flight trail |
 | **`Z`** | Show / hide obstacle safety zones |
+| **`[` / `]`** | Make the labels above the drone smaller / bigger |
 | **`X`** | Exit |
 | *(release all)* | Hover in place |
 
@@ -184,7 +206,7 @@ Every frame the drone casts a ray along its commanded direction of travel (so it
 **`--on-obstacle stop` (default)**
 1. **Brake** – the drone keeps its speed until it is close enough that a gentle 2 m/s² deceleration can still stop it, then slows smoothly.
 2. **Hold** – it halts `STOP_BUFFER = 0.4 m` in front of the zone and stays there. Its command is dropped, so it cannot take off again on its own (for example when you turn it to face clear space).
-3. **Say what happened** – the status line turns red, the nearest pillar pulses, the rear lights flash, and a measured move or *"go home"* ends with *STOPPED - OBSTACLE AHEAD*.
+3. **Say what happened** – the status label turns red, the blocking tower's halo pulses, the rear lights flash, and a measured move or *"go home"* ends with *STOPPED - OBSTACLE AHEAD*.
 4. **Move on** – any direction that is clear works at once; moving away from the obstacle always works, even from inside the zone.
 
 **`--on-obstacle steer`**
@@ -222,20 +244,19 @@ The tests run headless – no window, microphone or internet:
 python -m unittest -v
 ```
 
-They cover the command parser (including distances and angles), flight modes, measured moves and return-home, stopping before obstacles (braking distance, no creeping, no restart after turning, return-home and measured moves being stopped), the optional steer-around mode (including walls it must climb over and dead ends), the visuals (lean, pillar glow, rotor discs, navigation lights, floor marker, status colours, floor texture), the URDF model, keyboard handling, the voice thread (with a stubbed recogniser) and the CSV logger.
+They cover the command parser (including distances and angles), flight modes, measured moves and return-home, stopping before obstacles (braking distance, no creeping, no restart after turning, return-home and measured moves being stopped), the optional steer-around mode (including walls it must climb over and dead ends), the visuals (lean, rotor discs, navigation lights, floor marker, status colours), the generated textures and meshes, the city (traffic stays on the road, pedestrians never walk through lamp posts, no building shades the plaza, kiosks keep their exact collision boxes), the four cameras, the labels (attached to the drone, unchanged text never rewritten, rewrites rate-limited), the URDF model, keyboard handling, the voice thread (with a stubbed recogniser) and the CSV logger.
 
 ---
 
-## 📤 Pushing This Project to GitHub
+## 📤 Working in the team repository
 
-This folder is already a git repository (nothing is committed yet):
+This folder lives on the `tittu-09-voice-drone` branch of the team repository. Commit and push to that branch only:
 
 ```bash
-git add .
-git commit -m "Voice-controlled PyBullet drone with obstacle avoidance"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<your-repo-name>.git
-git push -u origin main
+git status
+git add pybullet_voice_drone
+git commit -m "Describe the change"
+git push origin HEAD:refs/heads/tittu-09-voice-drone
 ```
 
 ---

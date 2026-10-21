@@ -16,20 +16,22 @@ World frame: +X forward at yaw 0, +Y left, +Z up (metres, radians).
 
 import argparse
 import csv
+import difflib
 import math
 import os
 import queue
 import re
-import struct
 import threading
 import time
-import zlib
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
 import pybullet as p
 import pybullet_data
+
+import scene_assets as sa
+import scene_city
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 URDF_PATH = os.path.join(HERE, "drone.urdf")
@@ -72,9 +74,9 @@ TILT_PER_MPS = math.radians(8.0)        # lean per m/s of speed: 1.5 m/s -> 12 d
 MAX_TILT = math.radians(15.0)
 TRAIL_SECONDS = 10.0                    # how long a piece of the flight trail stays visible
 DISC_ALPHA = 0.30                       # opacity of the rotor discs at full speed
-ALERT_RANGE = 3.0                       # an obstacle starts to glow when the drone is this close to its zone
-SKY_COLOR = [0.60, 0.76, 0.92]
-LIGHT_POSITION = [-10.0, 8.0, 12.0]     # where the sun is: low enough for long shadows, not so high it glares
+ALERT_RANGE = 2.5                       # an obstacle starts to glow when the drone is this close to its zone
+SKY_COLOR = list(scene_city.SKY)
+LIGHT_POSITION = [-8.0, 6.0, 13.0]      # where the sun is: ~52 degrees up, so shadows are long but never glare
 
 CAMERA_DISTANCE = 8.0
 CAMERA_YAW = 45.0
@@ -120,6 +122,8 @@ class Intent(Enum):
     CAMERA = "CAMERA"
     TRAIL = "TRAIL"
     ZONES = "ZONES"
+    HUD_SMALLER = "HUD SMALLER"            # keys only: [ and ]
+    HUD_BIGGER = "HUD BIGGER"
     EXIT = "EXIT"
 
 
@@ -138,22 +142,23 @@ MOTION = {
 # Speech recognisers often return a homophone for "right"; "back"/"forwards" are common variants.
 _WORD_INTENTS = {
     "exit": Intent.EXIT, "quit": Intent.EXIT,
-    "stop": Intent.STOP, "halt": Intent.STOP, "freeze": Intent.STOP,
+    "stop": Intent.STOP, "halt": Intent.STOP, "freeze": Intent.STOP, "stock": Intent.STOP,
     "hover": Intent.STOP, "hold": Intent.STOP,
     "takeoff": Intent.TAKEOFF, "launch": Intent.TAKEOFF,
-    "land": Intent.LAND, "landing": Intent.LAND,
-    "forward": Intent.FORWARD, "forwards": Intent.FORWARD, "ahead": Intent.FORWARD,
+    "land": Intent.LAND, "landing": Intent.LAND, "lend": Intent.LAND,
+    "forward": Intent.FORWARD, "forwards": Intent.FORWARD, "foreword": Intent.FORWARD,
+    "ahead": Intent.FORWARD,
     "backward": Intent.BACKWARD, "backwards": Intent.BACKWARD,
     "back": Intent.BACKWARD, "reverse": Intent.BACKWARD,
     "left": Intent.LEFT,
     "right": Intent.RIGHT, "write": Intent.RIGHT, "rite": Intent.RIGHT,
     "up": Intent.UP, "rise": Intent.UP, "ascend": Intent.UP, "climb": Intent.UP,
-    "down": Intent.DOWN, "descend": Intent.DOWN, "lower": Intent.DOWN,
+    "down": Intent.DOWN, "descend": Intent.DOWN, "lower": Intent.DOWN, "dawn": Intent.DOWN,
     "camera": Intent.CAMERA,
     "trail": Intent.TRAIL,
     "zones": Intent.ZONES, "zone": Intent.ZONES,
 }
-_ROTATE_VERBS = {"rotate", "turn", "spin", "yaw", "pivot"}
+_ROTATE_VERBS = {"rotate", "rotating", "rotated", "turn", "turning", "spin", "spinning", "yaw", "pivot"}
 _ROTATE_SIDES = {
     "left": Intent.ROTATE_LEFT,
     "right": Intent.ROTATE_RIGHT, "write": Intent.ROTATE_RIGHT, "rite": Intent.ROTATE_RIGHT,
@@ -170,19 +175,47 @@ _LENGTH_UNITS = {"foot": 0.3048, "feet": 0.3048, "ft": 0.3048}      # anything e
 MIN_MOVE, MAX_MOVE, MAX_TURN_DEG = 0.1, 50.0, 720.0
 
 
+# Recognisers often split a command word in two. Pairs of words that mean one command word:
+_JOINS = {
+    ("take", "off"): "takeoff", ("lift", "off"): "takeoff", ("take", "of"): "takeoff",
+    ("for", "word"): "forward", ("four", "word"): "forward", ("fore", "word"): "forward",
+    ("for", "ward"): "forward", ("four", "ward"): "forward", ("fore", "ward"): "forward",
+    ("back", "word"): "backward", ("back", "ward"): "backward", ("back", "wards"): "backward",
+}
+# Everything the parser understands, so the spelling repair below never touches it.
+_KNOWN_WORDS = (set(_WORD_INTENTS) | _ROTATE_VERBS | set(_ONES) | set(_TENS) | set(_LENGTH_UNITS)
+                | {"home", "hundred", "off", "take", "lift", "meter", "meters", "metre", "metres",
+                   "degree", "degrees", "radian", "radians"})
+# Command words long enough to repair safely (a 4-letter word is too close to too many others).
+_FUZZY_WORDS = sorted(w for w in set(_WORD_INTENTS) | _ROTATE_VERBS | {"home"} if len(w) >= 5)
+_FUZZY_CUTOFF = 0.85
+
+
+def _repair(word):
+    """Fix a one-letter slip in a command word ("forwad", "takeof", "decend"). Numbers, words we already
+    understand and short words are left alone, and the cutoff is strict enough that "island" is not
+    "landing" and "uphill" is not "hover"."""
+    if len(word) < 5 or word in _KNOWN_WORDS:
+        return word
+    match = difflib.get_close_matches(word, _FUZZY_WORDS, n=1, cutoff=_FUZZY_CUTOFF)
+    return match[0] if match else word
+
+
 def _tokens(text):
-    """Lower-case words and numbers; "take off" / "lift off" become the single word "takeoff"."""
+    """Lower-case words and numbers; split command words are joined ("take off" -> "takeoff",
+    "for word" -> "forward") and one-letter slips repaired ("forwad" -> "forward")."""
     words = _TOKEN.findall(text.lower().replace("take-off", "takeoff"))
     merged = []
     i = 0
     while i < len(words):
-        if words[i] in ("take", "lift") and i + 1 < len(words) and words[i + 1] == "off":
-            merged.append("takeoff")
+        pair = tuple(words[i:i + 2])
+        if pair in _JOINS:
+            merged.append(_JOINS[pair])
             i += 2
         else:
             merged.append(words[i])
             i += 1
-    return merged
+    return [word if word[0].isdigit() else _repair(word) for word in merged]
 
 
 def _number_at(tokens, i):
@@ -292,6 +325,12 @@ def inflated_box(obstacle, extra):
 def inside_box(point, low, high):
     """Strictly inside: standing exactly on a face does not count."""
     return all(a < x < b for x, a, b in zip(point, low, high))
+
+
+def zone_gap(point, obstacle):
+    """Distance from `point` to the surface of an obstacle's safety zone (0 once inside it)."""
+    low, high = inflated_box(obstacle, SAFETY_DISTANCE)
+    return math.sqrt(sum(max(a - x, 0.0, x - b) ** 2 for x, a, b in zip(point, low, high)))
 
 
 def ray_box_distance(origin, direction, low, high, max_dist):
@@ -873,18 +912,7 @@ class DroneController:
 # PYBULLET SCENE
 # =========================================================
 
-def _write_png(path, width, height, rows):
-    """Minimal RGB PNG writer (no Pillow needed). `rows` holds one bytes object of width*3 per row."""
-    def chunk(kind, data):
-        body = kind + data
-        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
-
-    raw = b"".join(b"\x00" + row for row in rows)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
-        f.write(b"\x89PNG\r\n\x1a\n"
-                + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-                + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+_write_png = sa.write_png
 
 
 def make_ground_texture(path=GROUND_TEXTURE, size=512):
@@ -927,23 +955,38 @@ def _matte(body):
         p.changeVisualShape(body, link, specularColor=[0.0, 0.0, 0.0])
 
 
-class World:
-    """Lighting, textured floor, the home pad and the obstacle pillars."""
+SCENES = ("city", "simple")
 
-    def __init__(self, obstacles, home=(0.0, 0.0)):
+
+class World:
+    """The environment and the obstacle towers.
+
+    scene="city"   a plaza with a helipad, ring road with traffic, trees, benches and a skyline
+                   (scene_city.py); the obstacles are kiosk towers that grow a red halo as the drone nears
+    scene="simple" a gridded floor, striped pillars and a small pad: light enough for slow machines
+    """
+
+    def __init__(self, obstacles, home=(0.0, 0.0), scene="city"):
+        if scene not in SCENES:
+            raise ValueError("scene must be one of %s, not %r" % (SCENES, scene))
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setGravity(0, 0, -9.81)
         p.setTimeStep(DT)
         p.setRealTimeSimulation(False)
 
         floor = p.loadURDF("plane.urdf")
+        self.city = None
+        self._pillars = []                  # [obstacle, body id (None in the city), last glow level]
+        if scene == "city":
+            self.city = scene_city.CityScene(floor, obstacles, home, sun=tuple(LIGHT_POSITION[:2]))
+            self._pillars = [[ob, None, None] for ob in obstacles]
+            return
+
         if not os.path.exists(GROUND_TEXTURE):
             make_ground_texture()
         p.changeVisualShape(floor, -1, textureUniqueId=p.loadTexture(GROUND_TEXTURE),
                             rgbaColor=[1, 1, 1, 1])
         _matte(floor)
-
-        self._pillars = []                  # [obstacle, body id, last glow level]
         for ob in obstacles:
             pillar = self._add_pillar(ob)
             _matte(pillar)
@@ -997,20 +1040,25 @@ class World:
             linkJointAxis=[[0, 0, 1]] * 4)
 
     def update(self, controller, clock):
-        """Make pillars glow as the drone closes in, and pulse the one that is holding it back."""
+        """Make obstacles glow as the drone closes in, pulse the one that is holding it back, and
+        move the traffic."""
         blocker = controller.avoider.obstacle_name if controller.label == "OBSTACLE STOP" else None
-        for entry in self._pillars:
+        for index, entry in enumerate(self._pillars):
             ob, body, last = entry
-            low, high = inflated_box(ob, SAFETY_DISTANCE)
-            gap = math.sqrt(sum(max(a - x, 0.0, x - b) ** 2
-                                for x, a, b in zip(controller.pos, low, high)))
-            level = clamp(1.0 - gap / ALERT_RANGE, 0.0, 1.0)
+            level = clamp(1.0 - zone_gap(controller.pos, ob) / ALERT_RANGE, 0.0, 1.0)
             if ob.name == blocker:
                 level = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(clock * 10.0))
-            level = round(level * 20.0) / 20.0
+            if controller.mode is FlightMode.LANDED:
+                level = 0.0                  # parked next to a tower is not a warning
+            level = round(level * 10.0) / 10.0      # coarse steps: each change is a call into the GUI
             if level != last:
-                p.changeVisualShape(body, -1, rgbaColor=_lerp_color(PILLAR_COLOR, PILLAR_ALERT, level))
                 entry[2] = level
+                if self.city is not None:
+                    self.city.set_glow(index, level)
+                else:
+                    p.changeVisualShape(body, -1, rgbaColor=_lerp_color(PILLAR_COLOR, PILLAR_ALERT, level))
+        if self.city is not None:
+            self.city.update(clock)
 
 
 class DroneModel:
@@ -1048,8 +1096,11 @@ class DroneModel:
         self.pitch = 0.0
 
     def _update_effects(self, controller):
-        # Rotor discs fade in as the rotors spin up (the blades themselves blur into a disc).
-        alpha = round(clamp(self.spin / PROP_SPIN, 0.0, 1.0) * DISC_ALPHA, 2)
+        # Rotor discs fade in as the rotors spin up (the blades themselves blur into a disc). Only three
+        # opacity levels: every colour change is a call into the GUI, so a smooth fade would cost far
+        # more than it is worth.
+        fraction = clamp(self.spin / PROP_SPIN, 0.0, 1.0)
+        alpha = 0.0 if fraction < 0.05 else DISC_ALPHA if fraction > 0.8 else round(DISC_ALPHA / 2, 2)
         if alpha != self._disc_alpha:
             self._disc_alpha = alpha
             for link in self.discs:
@@ -1093,28 +1144,61 @@ class DroneModel:
             p.resetJointState(self.body, joint, sign * self.angle)
 
 
+def angle_difference(target_deg, current_deg):
+    """Shortest signed turn from current to target, in degrees (-180..180]."""
+    return (target_deg - current_deg + 180.0) % 360.0 - 180.0
+
+
 class CameraRig:
-    """Follow camera (keeps whatever angle/zoom you set with the mouse) or a fixed observer."""
+    """Four ways to watch the flight (the C key / "camera" cycles through them):
+
+    follow  tracks the drone; keeps whatever angle and zoom you set with the mouse
+    chase   sits behind the drone and turns with it, like a game camera
+    top     straight down from above, tracking the drone (mouse zoom and rotation still work)
+    fixed   a still observer; it never moves unless you move it
+    """
+
+    MODES = ("follow", "chase", "top", "fixed")
+    # (distance, pitch) used when a mode is entered; the mouse can change them afterwards
+    START = {"follow": (CAMERA_DISTANCE, CAMERA_PITCH), "chase": (6.5, -14.0),
+             "top": (24.0, -89.0), "fixed": (14.0, -35.0)}
 
     def __init__(self, mode="follow"):
+        if mode not in self.MODES:
+            raise ValueError("camera mode must be one of %s, not %r" % (self.MODES, mode))
         self.mode = mode
         self.target = [0.0, 0.0, 1.0]
-        if mode == "fixed":
-            p.resetDebugVisualizerCamera(14.0, CAMERA_YAW, -35.0, [3.0, 0.0, 1.0])
+        self._enter(first=True)
+
+    def _enter(self, first=False):
+        distance, pitch = self.START[self.mode]
+        if self.mode == "fixed":
+            target = list(self.target) if not first else [3.0, 0.0, 1.0]
+            yaw = CAMERA_YAW
+        elif first:
+            target, yaw = list(self.target), (-90.0 if self.mode == "chase" else CAMERA_YAW)
         else:
-            p.resetDebugVisualizerCamera(CAMERA_DISTANCE, CAMERA_YAW, CAMERA_PITCH, self.target)
+            info = p.getDebugVisualizerCamera()
+            target, yaw = list(self.target), info[8]
+        p.resetDebugVisualizerCamera(distance, yaw, pitch, target)
 
     def toggle(self):
-        self.mode = "fixed" if self.mode == "follow" else "follow"
+        self.mode = self.MODES[(self.MODES.index(self.mode) + 1) % len(self.MODES)]
+        self._enter()
         return self.mode
 
-    def update(self, pos, dt):
-        if self.mode != "follow":
+    def update(self, pos, dt, drone_yaw=0.0):
+        if self.mode == "fixed":
             return
         info = p.getDebugVisualizerCamera()
         yaw, pitch, distance = info[8], info[9], info[10]
         k = 1.0 - math.exp(-6.0 * dt)       # low-pass the target so the view does not jitter
         self.target = [t + (q - t) * k for t, q in zip(self.target, pos)]
+        if self.mode == "chase":
+            # PyBullet's camera yaw is the drone's heading minus 90 degrees when looking along its nose.
+            yaw += angle_difference(math.degrees(drone_yaw) - 90.0, yaw) * (1.0 - math.exp(-3.0 * dt))
+        elif self.mode == "top":
+            pitch = -89.0
         p.resetDebugVisualizerCamera(distance, yaw, pitch, self.target)
 
 
@@ -1221,11 +1305,33 @@ class Overlays:
 
 
 class Hud:
-    """Status text floating above the drone, so you can watch the window instead of the console."""
+    """Status labels floating above the drone: flight state (colour-coded), position/speed/heading,
+    distance to the nearest obstacle, and the last phrase heard.
 
-    def __init__(self):
-        self.item = None
-        self._last = 0.0
+    PyBullet can only draw text at a 3D position, and measuring it in the real window showed that any
+    text call costs ~4 ms while the scene moves -- far too slow to re-pin a screen-fixed HUD every
+    frame. So the labels are ATTACHED to the drone (the window moves them for free), and a label's text
+    is rewritten only when it has changed, at most CONTENT_HZ times a second, one label per call."""
+
+    SIZE = 2.5                       # text size; [ and ] scale it while flying (--hud-size sets it up front)
+    SPACING = 0.32                   # metres between lines
+    LIFT = 0.85                      # height of the lowest line above the drone's centre
+    CONTENT_HZ = 2.0                 # how often one label's text may be rewritten
+    MAX_REWRITES = 1                 # labels rewritten per call
+    ORDER = ("mode", "data", "obstacle", "heard")      # top to bottom
+
+    def __init__(self, body, obstacles=(), scale=1.0, enabled=True):
+        self.body = body             # the drone's PyBullet body: the labels are attached to it
+        self.obstacles = tuple(obstacles)
+        self.scale = scale
+        self.enabled = enabled
+        self.items = {}              # key -> debug item id
+        self.shown = {}              # key -> (text, colour, size, height) currently on screen
+        self._rewritten_at = {}
+
+    def resize(self, factor):
+        self.scale = clamp(self.scale * factor, 0.3, 4.0)
+        return self.scale
 
     @staticmethod
     def _colour(controller):
@@ -1241,21 +1347,57 @@ class Hud:
             return [0.4, 1.0, 0.5]
         return [1.0, 0.9, 0.2]
 
+    def obstacle_line(self, controller):
+        """(text, colour) for the distance to the nearest obstacle's safety zone."""
+        if not self.obstacles:
+            return "OBSTACLE  none here", [0.7, 0.7, 0.7]
+        gap = min(zone_gap(controller.pos, ob) for ob in self.obstacles)
+        if gap > 8.0:
+            return "OBSTACLE  clear", [0.4, 1.0, 0.5]
+        colour = [1.0, 0.25, 0.2] if gap < 1.0 else [1.0, 0.85, 0.2] if gap < 3.0 else [0.4, 1.0, 0.5]
+        return "OBSTACLE  %.1f m" % gap, colour
+
+    def lines(self, controller, heard):
+        """The labels as [(key, text, colour, height above the drone, relative size)], top to bottom."""
+        x, y, z = controller.pos
+        speed = math.hypot(*controller.vel)
+        heading = round(math.degrees(controller.yaw)) % 360
+        obstacle_text, obstacle_colour = self.obstacle_line(controller)
+        texts = {
+            "mode": (controller.label, self._colour(controller), 1.25),
+            "data": ("x %+.1f  y %+.1f  z %.1f m | %.1f m/s | hdg %03d" % (x, y, z, speed, heading),
+                     [1.0, 1.0, 1.0], 1.0),
+            "obstacle": (obstacle_text, obstacle_colour, 1.0),
+            "heard": ('heard "%s"' % heard if heard else "heard -", [0.4, 0.9, 1.0], 1.0),
+        }
+        step = self.SPACING * self.scale
+        rows = len(self.ORDER)
+        return [(key, texts[key][0], texts[key][1], self.LIFT + (rows - 1 - i) * step, texts[key][2])
+                for i, key in enumerate(self.ORDER)]
+
     def update(self, controller, heard, now):
-        if now - self._last < 0.1:
+        if not self.enabled:
             return
-        self._last = now
-        text = "%s | z %.1f m | %.1f m/s | hdg %d deg" % (
-            controller.label, controller.pos[2], math.hypot(*controller.vel),
-            round(math.degrees(controller.yaw)) % 360)
-        if heard:
-            text += " | heard: " + heard
-        where = [controller.pos[0], controller.pos[1], controller.pos[2] + 0.9]
-        options = dict(textColorRGB=self._colour(controller), textSize=1.6)
-        if self.item is None:
-            self.item = p.addUserDebugText(text, where, **options)
-        else:
-            p.addUserDebugText(text, where, replaceItemUniqueId=self.item, **options)
+        rewrites = 0
+        for key, text, colour, height, relative in self.lines(controller, heard):
+            wanted = (text, tuple(colour), self.SIZE * self.scale * relative, round(height, 3))
+            shown = self.shown.get(key)
+            if shown is None:
+                due = True                                            # first appearance: always
+            else:
+                due = (wanted != shown and rewrites < self.MAX_REWRITES
+                       and now - self._rewritten_at[key] >= 1.0 / self.CONTENT_HZ)
+            if not due:
+                continue
+            self.shown[key] = wanted
+            self._rewritten_at[key] = now
+            rewrites += 1
+            options = dict(textColorRGB=list(wanted[1]), textSize=wanted[2],
+                           parentObjectUniqueId=self.body, parentLinkIndex=-1)
+            if key in self.items:
+                p.addUserDebugText(text, [0.0, 0.0, wanted[3]], replaceItemUniqueId=self.items[key], **options)
+            else:
+                self.items[key] = p.addUserDebugText(text, [0.0, 0.0, wanted[3]], **options)
 
 
 # =========================================================
@@ -1288,6 +1430,8 @@ TRIGGER_KEYS = {
     **{code: Intent.TRAIL for code in _keys("p")},
     **{code: Intent.ZONES for code in _keys("z")},
     **{code: Intent.EXIT for code in _keys("x")},
+    ord("["): Intent.HUD_SMALLER,
+    ord("]"): Intent.HUD_BIGGER,
     ord(" "): Intent.STOP,
 }
 
@@ -1320,11 +1464,33 @@ class KeyboardInput:
 
 
 class VoiceListener(threading.Thread):
-    """Background microphone loop: recognised phrases go onto a queue for the main loop."""
+    """Background microphone loop: recognised phrases go onto a queue for the main loop.
 
-    def __init__(self, out, stop, log=print):
+    Three things make it forgiving:
+      * it listens in Indian English by default (`language`), which Google transcribes far better for
+        Indian-accented speech than its US default;
+      * Google returns several ranked guesses, and the first of the top GUESSES that is a drone command
+        wins, so "for this / forward" still means forward;
+      * this thread only LISTENS, while a worker thread sends each recording to Google, so a command
+        spoken right after another is not lost while the first one is being transcribed."""
+
+    GUESSES = 3
+    MAX_BACKLOG = 6                      # recordings waiting for transcription before the oldest news is dropped
+
+    def __init__(self, out, stop, log=print, language="en-IN"):
         super().__init__(daemon=True)
-        self.out, self.stop_event, self.log = out, stop, log
+        self.out, self.stop_event, self.log, self.language = out, stop, log, language
+
+    def choose(self, guesses):
+        """The transcript to act on, from Google's ranked guesses (best first)."""
+        for guess in guesses:
+            if parse_command(guess) is not None:
+                if guess != guesses[0]:
+                    self.log('(heard "%s" - took "%s", the first guess that is a command)' % (guesses[0], guess))
+                return guess
+        if len(guesses) > 1:
+            self.log("(other guesses: %s)" % " | ".join('"%s"' % g for g in guesses[1:]))
+        return guesses[0]
 
     def run(self):
         try:
@@ -1343,31 +1509,54 @@ class VoiceListener(threading.Thread):
                      "(or use --console to type commands)." % error)
             return
 
+        recordings = queue.Queue()
+        worker = threading.Thread(target=self._transcribe, args=(sr, recognizer, recordings), daemon=True)
+        worker.start()
         try:
             with microphone as source:                  # open the stream once, not per phrase
                 self.log("Calibrating microphone - stay quiet for a second...")
                 recognizer.adjust_for_ambient_noise(source, duration=1)
-                self.log("VOICE CONTROL READY - say: take off, forward, backward, left, right, up, "
+                self.log("VOICE CONTROL READY (%s) - say: take off, forward, backward, left, right, up, "
                          "down, rotate left, rotate right, stop, go home, land, exit "
-                         "(add a distance or angle: 'forward 3 meters', 'rotate right 90 degrees')")
-                last_error = 0.0
+                         "(add a distance or angle: 'forward 3 meters', 'rotate right 90 degrees')"
+                         % self.language)
                 while not self.stop_event.is_set():
                     try:
                         audio = recognizer.listen(source, timeout=2, phrase_time_limit=4)
                     except sr.WaitTimeoutError:
                         continue
-                    try:
-                        text = recognizer.recognize_google(audio)
-                    except sr.UnknownValueError:
+                    if recordings.qsize() >= self.MAX_BACKLOG:
+                        self.log("Still transcribing earlier speech - dropped a recording.")
                         continue
-                    except sr.RequestError as error:
-                        if time.monotonic() - last_error > 10.0:
-                            self.log("Speech service unreachable (needs internet): %s" % error)
-                            last_error = time.monotonic()
-                        continue
-                    self.out.put(("voice", text))
+                    recordings.put(audio)
         except Exception as error:
             self.log("Voice input stopped: %s" % error)
+        finally:
+            recordings.put(None)                        # let the worker finish what is queued, then stop
+            worker.join(timeout=10)
+
+    def _transcribe(self, sr, recognizer, recordings):
+        last_error = 0.0
+        while True:
+            audio = recordings.get()
+            if audio is None:
+                return
+            try:
+                result = recognizer.recognize_google(audio, language=self.language, show_all=True)
+            except sr.UnknownValueError:
+                continue
+            except sr.RequestError as error:
+                if time.monotonic() - last_error > 10.0:
+                    self.log("Speech service unreachable (needs internet): %s" % error)
+                    last_error = time.monotonic()
+                continue
+            except Exception as error:
+                self.log("Voice error: %s" % error)
+                continue
+            alternatives = result.get("alternative", []) if isinstance(result, dict) else []
+            guesses = [a.get("transcript", "") for a in alternatives if a.get("transcript")][:self.GUESSES]
+            if guesses:
+                self.out.put(("voice", self.choose(guesses)))
 
 
 class ConsoleListener(threading.Thread):
@@ -1447,14 +1636,14 @@ def connect_gui():
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
     # Sharp shadows are what make height readable; the sky colour replaces the default grey.
     p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 1, lightPosition=LIGHT_POSITION,
-                               shadowMapResolution=4096, shadowMapWorldSize=40,
+                               shadowMapResolution=2048, shadowMapWorldSize=60,
                                rgbBackground=SKY_COLOR)
     return client
 
 
 def run(voice=True, console=False, obstacles=True, camera="follow",
         log_path=TELEMETRY_PATH, duration=None, trail=True, show_zones=False,
-        on_obstacle="stop"):
+        on_obstacle="stop", scene="city", hud_size=1.0, hud_on=True, language="en-IN"):
     client = connect_gui()
     if client < 0:
         print("ERROR: could not connect to the PyBullet GUI. Close any old PyBullet windows and retry.")
@@ -1462,10 +1651,10 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
 
     zones = DEFAULT_OBSTACLES if obstacles else ()
     controller = DroneController(obstacles=zones, on_obstacle=on_obstacle)
-    world = World(zones, controller.home)
+    world = World(zones, controller.home, scene)
     model = DroneModel(controller)
     rig = CameraRig(camera)
-    hud = Hud()
+    hud = Hud(model.body, zones, hud_size, hud_on)
     overlays = Overlays(zones, trail, show_zones)
     keyboard = KeyboardInput()
 
@@ -1479,7 +1668,7 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
     commands = queue.Queue()
     stop = threading.Event()
     if voice:
-        VoiceListener(commands, stop).start()
+        VoiceListener(commands, stop, language=language).start()
     if console:
         ConsoleListener(commands, stop).start()
 
@@ -1497,7 +1686,7 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
     print("Voice/typed commands accept a distance or angle: 'forward 3 meters', 'rotate left 90 degrees'.")
     print("The drone starts on the ground: take off first.\n")
 
-    heard = ""
+    heard, heard_at, frame = "", 0.0, 0
     start = last = time.perf_counter()
     try:
         while not controller.exit_requested and p.isConnected():
@@ -1514,11 +1703,13 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
                 if intent is None:
                     print(">> COMMAND NOT RECOGNIZED")
                     continue
-                heard = text
+                heard, heard_at = text, now
                 requests.append((intent, amount, text))
             for intent, amount, said in requests:
                 if intent is Intent.CAMERA:
                     print(">> CAMERA:", rig.toggle().upper())
+                elif intent in (Intent.HUD_SMALLER, Intent.HUD_BIGGER):
+                    print(">> HUD SIZE: %.2fx" % hud.resize(0.8 if intent is Intent.HUD_SMALLER else 1.25))
                 elif intent is Intent.TRAIL:
                     print(">> TRAIL:", "ON" if overlays.toggle_trail() else "OFF")
                 elif intent is Intent.ZONES:
@@ -1533,13 +1724,17 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
 
             controller.step(dt)
             model.update(controller, dt)
-            rig.update(controller.pos, dt)
+            rig.update(controller.pos, dt, controller.yaw)
             world.update(controller, model.clock)
             overlays.update(controller, now)
-            hud.update(controller, heard, now)
+            hud.update(controller, heard if now - heard_at < 8.0 else "", now)
             if logger:
                 logger.tick(controller)
-            p.stepSimulation()
+            # Nothing here is a dynamic body, so the physics step is only a keep-alive for the window;
+            # it costs ~2 ms with the city loaded, so do it every third frame.
+            frame += 1
+            if frame % 3 == 0:
+                p.stepSimulation()
 
             time.sleep(max(0.0, DT - (time.perf_counter() - now)))
     except p.error:
@@ -1573,9 +1768,18 @@ def main(description, voice, obstacles):
     parser.add_argument("--on-obstacle", choices=ObstacleAvoider.STRATEGIES, default="stop",
                         help="what the drone does when an obstacle is in its way: 'stop' before it "
                         "(default) or 'steer' around it")
+    parser.add_argument("--language", default="en-IN", metavar="CODE",
+                        help="spoken language for the speech service, e.g. en-IN (Indian English, default), en-US, en-GB")
     parser.add_argument("--console", action="store_true",
                         help="also accept typed commands in this terminal")
-    parser.add_argument("--camera", choices=("follow", "fixed"), default="follow")
+    parser.add_argument("--scene", choices=SCENES, default="city",
+                        help="'city' (default): plaza, roads, traffic and skyline; 'simple': plain floor "
+                        "and pillars, lighter on slow machines")
+    parser.add_argument("--camera", choices=CameraRig.MODES, default="follow",
+                        help="starting camera (C or the word 'camera' cycles through them)")
+    parser.add_argument("--hud-size", type=float, default=1.0, metavar="SCALE",
+                        help="scale of the on-screen text (also [ and ] while flying)")
+    parser.add_argument("--no-hud", action="store_true", help="hide the on-screen text")
     parser.add_argument("--no-trail", action="store_true", help="start with the flight trail hidden")
     parser.add_argument("--zones", action="store_true",
                         help="start with the obstacle safety zones drawn")
@@ -1588,4 +1792,5 @@ def main(description, voice, obstacles):
     raise SystemExit(run(
         voice=args.voice, console=args.console, obstacles=args.obstacles, camera=args.camera,
         log_path=None if args.no_log else args.telemetry_file, duration=args.duration,
-        trail=not args.no_trail, show_zones=args.zones, on_obstacle=args.on_obstacle))
+        trail=not args.no_trail, show_zones=args.zones, on_obstacle=args.on_obstacle,
+        scene=args.scene, hud_size=args.hud_size, hud_on=not args.no_hud, language=args.language))

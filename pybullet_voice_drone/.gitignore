@@ -19,3 +19,6 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+
+# City meshes are generated on first run (scene_assets.py) and rebuilt on demand
+assets/mesh/

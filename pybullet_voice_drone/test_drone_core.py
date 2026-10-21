@@ -14,8 +14,11 @@ from unittest import mock
 from xml.etree import ElementTree
 
 import pybullet as p
+import pybullet_data
 
 import drone_core as dc
+import scene_assets as sa
+import scene_city as sc
 from drone_core import DroneController, FlightMode, Intent, parse_command
 
 DT = 1.0 / 60.0
@@ -76,6 +79,32 @@ class ParseCommandTests(unittest.TestCase):
         self.check(["stop", "halt", "freeze", "hover"], Intent.STOP)
         self.check(["exit", "quit"], Intent.EXIT)
 
+    def test_words_a_recogniser_splits_in_two(self):
+        self.check(["for word", "four ward", "go for word", "fore word"], Intent.FORWARD)
+        self.check(["back word", "go back ward"], Intent.BACKWARD)
+        self.check(["take of", "lift off"], Intent.TAKEOFF)
+
+    def test_common_mishearings(self):
+        self.check(["foreword"], Intent.FORWARD)
+        self.check(["stock"], Intent.STOP)
+        self.check(["dawn"], Intent.DOWN)
+        self.check(["lend"], Intent.LAND)
+
+    def test_a_slip_of_a_letter_still_works(self):
+        self.check(["forwad", "foward"], Intent.FORWARD)
+        self.check(["backwad"], Intent.BACKWARD)
+        self.check(["takeof"], Intent.TAKEOFF)
+        self.check(["decend"], Intent.DOWN)
+        self.check(["ascnd"], Intent.UP)
+        self.check(["rotating left", "turning to the left", "spinning left"], Intent.ROTATE_LEFT)
+        self.check(["rotating right", "turning right"], Intent.ROTATE_RIGHT)
+
+    def test_repairs_do_not_invent_commands_out_of_other_speech(self):
+        for phrase in ["wildlife", "sticker", "price", "hello", "sasaram", "yellow", "what a good",
+                       "for this", "supply system work", "Kallu Reddy saree", "can I change to Bluetooth"]:
+            with self.subTest(phrase=phrase):
+                self.assertIsNone(parse_command(phrase))
+
     def test_whole_words_only(self):
         for phrase in ["island", "hello there", "", "rotate", "go", "bottom", "uphill"]:
             with self.subTest(phrase=phrase):
@@ -100,6 +129,8 @@ class ParseRequestTests(unittest.TestCase):
         self.check("up 2", Intent.UP, 2.0)
         self.check("go down twenty five meters", Intent.DOWN, 25.0)
         self.check("up ten feet", Intent.UP, 3.048)
+        self.check("forwad 3 meters", Intent.FORWARD, 3.0)
+        self.check("for word two meters", Intent.FORWARD, 2.0)
 
     def test_angles(self):
         self.check("rotate left 90 degrees", Intent.ROTATE_LEFT, 90.0)
@@ -694,6 +725,8 @@ class FakeSpeechRecognition:
         fake = self
         self.script = list(script)
         self.recognised = []
+        self.languages = []
+        self.gate = None
 
         class Recognizer:
             pause_threshold = 0
@@ -710,12 +743,18 @@ class FakeSpeechRecognition:
                     raise fake.WaitTimeoutError()
                 return step
 
-            def recognize_google(self, audio):
+            def recognize_google(self, audio, language="en-US", show_all=False):
+                fake.languages.append(language)
+                if fake.gate is not None:
+                    fake.gate.wait(5)                  # a slow network, until the test opens the gate
                 if audio == "mumble":
                     raise fake.UnknownValueError()
                 if audio == "offline":
                     raise fake.RequestError("no internet")
-                return audio
+                guesses = list(audio) if isinstance(audio, tuple) else [audio]   # a tuple = ranked guesses
+                if not show_all:
+                    return guesses[0]
+                return {"alternative": [{"transcript": g} for g in guesses], "final": True}
 
         class Microphone:
             def __init__(self):
@@ -732,12 +771,12 @@ class FakeSpeechRecognition:
 
 
 class VoiceListenerTests(unittest.TestCase):
-    def run_listener(self, script, microphone_error=None):
+    def run_listener(self, script, microphone_error=None, **listener_options):
         stop = threading.Event()
-        fake = FakeSpeechRecognition(script, stop, microphone_error)
+        fake = self.fake = FakeSpeechRecognition(script, stop, microphone_error)
         out, logs = queue.Queue(), []
         with mock.patch.dict(sys.modules, {"speech_recognition": fake}):
-            listener = dc.VoiceListener(out, stop, log=logs.append)
+            listener = dc.VoiceListener(out, stop, log=logs.append, **listener_options)
             listener.start()
             listener.join(timeout=5)
         self.assertFalse(listener.is_alive())
@@ -751,6 +790,47 @@ class VoiceListenerTests(unittest.TestCase):
             ["timeout", "mumble", "take off", "offline", "offline", "go forward"])
         self.assertEqual(items, [("voice", "take off"), ("voice", "go forward")])
         self.assertEqual(sum("unreachable" in line for line in logs), 1)   # warned once, not per phrase
+
+    def test_takes_the_first_guess_that_is_a_command(self):
+        items, logs = self.run_listener([("for this", "forward", "four ward")])
+        self.assertEqual(items, [("voice", "forward")])
+        self.assertTrue(any('heard "for this"' in line and 'took "forward"' in line for line in logs))
+
+    def test_a_command_in_the_top_spot_needs_no_explanation(self):
+        items, logs = self.run_listener([("take off", "take of")])
+        self.assertEqual(items, [("voice", "take off")])
+        self.assertFalse(any("heard" in line and "took" in line for line in logs))
+
+    def test_unrecognised_speech_is_passed_on_and_the_other_guesses_are_logged(self):
+        items, logs = self.run_listener([("price 6 m", "prize 6 m", "rice 6 m")])
+        self.assertEqual(items, [("voice", "price 6 m")])          # the main loop will say "not recognised"
+        self.assertTrue(any("other guesses" in line and "prize 6 m" in line for line in logs))
+
+    def test_only_the_top_three_guesses_are_considered(self):
+        items, _ = self.run_listener([("a", "b", "c", "forward")])
+        self.assertEqual(items, [("voice", "a")])
+
+    def test_listens_in_indian_english_by_default_and_the_language_can_be_changed(self):
+        self.run_listener(["stop"])
+        self.assertEqual(self.fake.languages, ["en-IN"])
+        self.run_listener(["stop"], language="en-US")
+        self.assertEqual(self.fake.languages, ["en-US"])
+
+    def test_the_microphone_keeps_listening_while_a_phrase_is_being_transcribed(self):
+        stop = threading.Event()
+        fake = FakeSpeechRecognition(["take off", "forward"], stop)
+        fake.gate = threading.Event()                              # transcription blocks until we open this
+        out = queue.Queue()
+        with mock.patch.dict(sys.modules, {"speech_recognition": fake}):
+            listener = dc.VoiceListener(out, stop, log=lambda line: None)
+            listener.start()
+            # `stop` is set when the listening loop has consumed both recordings. If listening waited
+            # for the first transcription (the old behaviour) this would time out.
+            self.assertTrue(stop.wait(timeout=5), "the microphone stalled behind the slow transcription")
+            self.assertTrue(out.empty())                           # nothing transcribed yet...
+            fake.gate.set()                                        # ...now the network answers
+            listener.join(timeout=10)
+        self.assertEqual([out.get_nowait() for _ in range(2)], [("voice", "take off"), ("voice", "forward")])
 
     def test_missing_microphone_is_reported_not_raised(self):
         items, logs = self.run_listener([], microphone_error=OSError("No Default Input Device Available"))
@@ -863,16 +943,16 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(len(zlib.decompress(data[idat + 4:idat + 4 + length])), 64 * (1 + 64 * 3))
 
     def test_shipped_ground_texture_loads_in_pybullet(self):
-        dc.World((), (0.0, 0.0))                             # creates assets/ground.png if it is missing
+        dc.World((), (0.0, 0.0), "simple")                           # creates assets/ground.png if it is missing
         self.assertTrue(os.path.exists(dc.GROUND_TEXTURE))
         self.assertGreaterEqual(p.loadTexture(dc.GROUND_TEXTURE), 0)
 
     def test_world_contains_floor_pad_and_every_pillar(self):
-        dc.World(dc.DEFAULT_OBSTACLES, (0.0, 0.0))
+        dc.World(dc.DEFAULT_OBSTACLES, (0.0, 0.0), "simple")
         self.assertEqual(p.getNumBodies(), 1 + len(dc.DEFAULT_OBSTACLES) + 1)   # floor, pillars, pad
 
     def test_pillars_keep_their_collision_shape_under_the_decoration(self):
-        world = dc.World(dc.DEFAULT_OBSTACLES, (0.0, 0.0))
+        world = dc.World(dc.DEFAULT_OBSTACLES, (0.0, 0.0), "simple")
         body = world._pillars[0][1]
         shapes = p.getCollisionShapeData(body, -1)
         self.assertEqual(len(shapes), 1)                     # bands, cap and beacon are visual-only
@@ -881,7 +961,7 @@ class SceneTests(unittest.TestCase):
             self.assertAlmostEqual(got, want, places=5)
 
     def test_pillars_glow_as_the_drone_approaches_and_pulse_when_one_holds_it_back(self):
-        world = dc.World(dc.DEFAULT_OBSTACLES, (0.0, 0.0))
+        world = dc.World(dc.DEFAULT_OBSTACLES, (0.0, 0.0), "simple")
         c = quiet_controller(dc.DEFAULT_OBSTACLES)
         shaft = world._pillars[0][1]
 
@@ -890,7 +970,11 @@ class SceneTests(unittest.TestCase):
         far = self.rgba(shaft, -1)
         self.assertAlmostEqual(far[0], dc.PILLAR_COLOR[0], places=2)
 
-        c.pos = [0.0, 0.0, 2.0]                              # 1.2 m from Obstacle_1's zone
+        c.pos = [0.0, 0.0, 2.0]                              # 1.2 m from Obstacle_1's zone, but parked
+        world.update(c, 0.0)
+        self.assertAlmostEqual(self.rgba(shaft, -1)[0], far[0], places=5)      # no warning while landed
+
+        c.mode = FlightMode.FLYING
         world.update(c, 0.0)
         near = self.rgba(shaft, -1)
         self.assertGreater(near[0], far[0] + 0.1)
@@ -995,6 +1079,463 @@ class SensorTests(unittest.TestCase):
         c.apply_intent(Intent.FORWARD)
         simulate(c, 1.0)
         self.assertIsNotNone(c.avoider.sensor)
+
+
+class AssetGeneratorTests(unittest.TestCase):
+    def test_every_city_texture_is_generated_as_a_valid_png(self):
+        with tempfile.TemporaryDirectory() as folder:
+            paths = sa.ensure_textures(folder)
+            self.assertEqual(set(paths), {"grass", "asphalt", "plaza", "sidewalk", *sa.FACADES})
+            for name, path in paths.items():
+                with open(path, "rb") as f:
+                    data = f.read()
+                self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n", name)
+                width, height = struct.unpack(">II", data[16:24])
+                idat = data.index(b"IDAT")
+                length = struct.unpack(">I", data[idat - 4:idat])[0]
+                self.assertEqual(len(zlib.decompress(data[idat + 4:idat + 4 + length])),
+                                 height * (1 + width * 3), name)
+            before = os.path.getmtime(paths["grass"])
+            sa.ensure_textures(folder)                        # second call must not regenerate
+            self.assertEqual(os.path.getmtime(paths["grass"]), before)
+
+    def test_floor_quad_texture_repeats_once_per_two_metres(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "floor.obj")
+            sa.write_floor_obj(path, -16, 16, -8, 8)
+            with open(path, encoding="utf-8") as f:
+                uvs = [tuple(map(float, line.split()[1:])) for line in f if line.startswith("vt ")]
+        self.assertEqual(max(u for u, _ in uvs), 16.0)       # 32 m / 2 m
+        self.assertEqual(max(v for _, v in uvs), 8.0)        # 16 m / 2 m
+
+    def test_wall_mesh_faces_point_outwards_and_windows_tile_whole_bays(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "walls.obj")
+            sa.write_walls_obj(path, 20.0, 16.0, 30.0)
+            with open(path, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        vertices = [tuple(map(float, l.split()[1:])) for l in lines if l.startswith("v ")]
+        uvs = [tuple(map(float, l.split()[1:])) for l in lines if l.startswith("vt ")]
+        faces = [[tuple(int(i) for i in t.split("/")) for t in l.split()[1:]] for l in lines if l.startswith("f ")]
+        self.assertEqual(len(faces), 8)                      # 4 walls x 2 triangles
+        for face in faces:
+            a, b, c = (vertices[v - 1] for v, _, _ in face)
+            ab = [y - x for x, y in zip(a, b)]
+            ac = [z - x for x, z in zip(a, c)]
+            normal = (ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0])
+            centre = [sum(v[i] for v in (a, b, c)) / 3 for i in range(2)]
+            self.assertGreater(normal[0] * centre[0] + normal[1] * centre[1], 0.0, "wall faces inward")
+        self.assertEqual(max(u for u, _ in uvs), 8.0)        # 20 m / 2.5 m bays
+        self.assertEqual(max(v for _, v in uvs), 9.0)        # 30 m / 3.2 m = 9.4 -> 9 whole floors
+
+
+class LanePoseTests(unittest.TestCase):
+    HALF, RADIUS = sc.LANE_IN, sc.CORNER_RADIUS
+
+    def test_the_path_is_a_closed_rounded_square_that_stays_in_its_lane(self):
+        length = sc.lane_length(self.HALF, self.RADIUS)
+        for ccw in (True, False):
+            previous = sc.lane_pose(self.HALF, self.RADIUS, 0.0, ccw)
+            for i in range(1, 2001):
+                s = length * i / 2000
+                x, y, heading = sc.lane_pose(self.HALF, self.RADIUS, s, ccw)
+                self.assertLessEqual(max(abs(x), abs(y)), self.HALF + 1e-6)
+                self.assertGreaterEqual(max(abs(x), abs(y)), self.HALF - self.RADIUS - 1e-6)
+                self.assertLess(math.hypot(x - previous[0], y - previous[1]), length / 2000 * 1.01)
+                previous = (x, y, heading)
+            end = sc.lane_pose(self.HALF, self.RADIUS, length, ccw)
+            start = sc.lane_pose(self.HALF, self.RADIUS, 0.0, ccw)
+            self.assertAlmostEqual(end[0], start[0], places=6)
+            self.assertAlmostEqual(end[1], start[1], places=6)
+
+    def test_cars_face_the_way_they_drive(self):
+        for ccw in (True, False):
+            for s in (3.0, 17.0, 31.0, 55.0, 90.0):
+                x, y, heading = sc.lane_pose(self.HALF, self.RADIUS, s, ccw)
+                x2, y2, _ = sc.lane_pose(self.HALF, self.RADIUS, s + 0.01, ccw)
+                self.assertGreater(math.cos(heading) * (x2 - x) + math.sin(heading) * (y2 - y), 0.0099)
+
+    def test_the_two_lanes_circulate_in_opposite_directions(self):
+        def turning(ccw):                                    # signed area swept by the path
+            pts = [sc.lane_pose(self.HALF, self.RADIUS, sc.lane_length(self.HALF, self.RADIUS) * i / 400, ccw)
+                   for i in range(401)]
+            return sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(pts, pts[1:]))
+        self.assertGreater(turning(True), 0.0)
+        self.assertLess(turning(False), 0.0)
+
+
+class CitySceneTests(unittest.TestCase):
+    def setUp(self):
+        self.client = p.connect(p.DIRECT)
+        self.addCleanup(p.disconnect, self.client)           # runs even if the rest of setUp raises
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        self.floor = p.loadURDF("plane.urdf")
+        self.city = sc.CityScene(self.floor, dc.DEFAULT_OBSTACLES, (0.0, 0.0), sun=tuple(dc.LIGHT_POSITION[:2]))
+
+    def test_has_the_expected_cast_of_characters(self):
+        self.assertEqual(len(self.city.cars), 9)
+        self.assertEqual(len(self.city.walkers), 10)
+        self.assertEqual(len(self.city.kiosks), len(dc.DEFAULT_OBSTACLES))
+        self.assertEqual(len(self.city.buildings), 16)
+        self.assertGreater(p.getNumBodies(), 40)
+
+    def test_kiosks_keep_the_exact_collision_box_the_obstacle_logic_uses(self):
+        for kiosk in self.city.kiosks:
+            ob = kiosk["obstacle"]
+            shapes = p.getCollisionShapeData(kiosk["body"], -1)
+            self.assertEqual(len(shapes), 1)
+            for got, want in zip(shapes[0][3], (2 * h for h in ob.half)):
+                self.assertAlmostEqual(got, want, places=5)
+            position = p.getBasePositionAndOrientation(kiosk["body"])[0]
+            for got, want in zip(position, ob.center):
+                self.assertAlmostEqual(got, want, places=5)
+
+    def test_traffic_moves_and_stays_on_the_road(self):
+        start = [p.getBasePositionAndOrientation(c["body"])[0] for c in self.city.cars]
+        for clock in (0.0, 3.7, 11.1, 29.9, 60.0, 123.4):
+            self.city.update(clock)
+            for car in self.city.cars:
+                x, y, _ = p.getBasePositionAndOrientation(car["body"])[0]
+                ring = max(abs(x), abs(y))
+                self.assertGreaterEqual(ring, sc.ROAD_IN, "car left the road (inner)")
+                self.assertLessEqual(ring, sc.ROAD_OUT, "car left the road (outer)")
+        self.city.update(5.0)
+        moved = [p.getBasePositionAndOrientation(c["body"])[0] for c in self.city.cars]
+        self.assertTrue(all(math.dist(a, b) > 5.0 for a, b in zip(start, moved)))
+
+    def test_pedestrians_stay_on_the_inner_sidewalk(self):
+        for clock in (0.0, 9.0, 41.0, 97.0):
+            self.city.update(clock)
+            for walker in self.city.walkers:
+                x, y, _ = p.getBasePositionAndOrientation(walker["body"])[0]
+                self.assertGreaterEqual(max(abs(x), abs(y)), sc.PLAZA)
+                self.assertLessEqual(max(abs(x), abs(y)), sc.WALK_IN)
+
+    def test_pedestrians_never_walk_through_a_lamp_post(self):
+        lamps = [(a, b) for a in (-17.0, 0.0, 17.0) for b in (-17.0, 0.0, 17.0) if (a, b) != (0.0, 0.0)]
+        for clock in [i * 0.7 for i in range(400)]:
+            self.city.update(clock)
+            for walker in self.city.walkers:
+                x, y, _ = p.getBasePositionAndOrientation(walker["body"])[0]
+                for lx, ly in lamps:
+                    self.assertGreater(math.hypot(x - lx, y - ly), 0.2 + 0.23, "walked through a lamp post")
+
+    def test_no_building_throws_its_shadow_onto_the_plaza(self):
+        sx, sy, sz = dc.LIGHT_POSITION
+        for x, y, wx, wy, height in self.city.buildings:
+            reach = (-sx / sz * height, -sy / sz * height)    # shadows point away from the sun
+            for cx in (x - wx / 2, x + wx / 2):
+                for cy in (y - wy / 2, y + wy / 2):
+                    for t in [i / 20 for i in range(21)]:
+                        px, py = cx + reach[0] * t, cy + reach[1] * t
+                        self.assertFalse(abs(px) < sc.PLAZA and abs(py) < sc.PLAZA,
+                                         "building at (%d,%d) h=%d shades the plaza" % (x, y, height))
+
+    def test_buildings_are_taller_on_the_side_away_from_the_sun(self):
+        sun = dc.LIGHT_POSITION
+        toward = [h for x, y, _, _, h in self.city.buildings if x * sun[0] + y * sun[1] > 0]
+        away = [h for x, y, _, _, h in self.city.buildings if x * sun[0] + y * sun[1] <= 0]
+        self.assertTrue(toward and away)
+        self.assertLess(max(toward), min(away))
+
+    def test_halo_follows_the_requested_glow_level(self):
+        halo = self.city.kiosks[0]["halo"]
+        alpha = lambda: next(v[7] for v in p.getVisualShapeData(halo) if v[1] == -1)[3]
+        self.city.set_glow(0, 0.0)
+        self.assertEqual(alpha(), 0.0)
+        self.city.set_glow(0, 1.0)
+        self.assertAlmostEqual(alpha(), 0.5, places=5)
+        self.city.set_glow(0, 0.5)
+        self.assertAlmostEqual(alpha(), 0.25, places=5)
+
+    def test_world_in_city_mode_drives_the_halo_and_the_traffic(self):
+        p.resetSimulation()
+        world = dc.World(dc.DEFAULT_OBSTACLES, (0.0, 0.0), "city")
+        c = airborne(dc.DEFAULT_OBSTACLES)
+        c.pos = [0.0, 0.0, 2.0]                              # 1.2 m from Obstacle_1's zone, flying
+        world.update(c, 0.0)
+        halo = world.city.kiosks[0]["halo"]
+        self.assertGreater(next(v[7] for v in p.getVisualShapeData(halo) if v[1] == -1)[3], 0.1)
+        car = world.city.cars[0]["body"]
+        before = p.getBasePositionAndOrientation(car)[0]
+        world.update(c, 4.0)
+        self.assertGreater(math.dist(before, p.getBasePositionAndOrientation(car)[0]), 5.0)
+
+    def test_unknown_scene_is_rejected(self):
+        with self.assertRaises(ValueError):
+            dc.World(dc.DEFAULT_OBSTACLES, (0.0, 0.0), "moon")
+
+
+def fake_camera_info(yaw, pitch, distance, target, fov=60.0, aspect=1280 / 800):
+    """What p.getDebugVisualizerCamera() returns, built from the same maths PyBullet uses."""
+    view = p.computeViewMatrixFromYawPitchRoll(target, distance, yaw, pitch, 0, 2)
+    proj = p.computeProjectionMatrixFOV(fov, aspect, 0.1, 500)
+    forward = tuple(-view[c * 4 + 2] for c in range(3))
+    up = tuple(view[c * 4 + 1] for c in range(3))
+    return (1280, 800, view, proj, up, forward, (0, 0, 0), (0, 0, 0), yaw, pitch, distance, tuple(target))
+
+
+class FakeDebugCamera:
+    """Stands in for the GUI's camera: remembers what resetDebugVisualizerCamera was told."""
+
+    def __init__(self, yaw=45.0, pitch=-30.0, distance=8.0, target=(0, 0, 1)):
+        self.state = [yaw, pitch, distance, list(target)]
+        self.resets = 0
+
+    def get(self):
+        yaw, pitch, distance, target = self.state
+        return fake_camera_info(yaw, pitch, distance, target)
+
+    def reset(self, distance, yaw, pitch, target):
+        self.state = [yaw, pitch, distance, list(target)]
+        self.resets += 1
+
+
+class CameraTests(unittest.TestCase):
+    def rig(self, mode, yaw=None, pitch=None, distance=None):
+        """A rig on a fake camera. yaw/pitch/distance, if given, are applied AFTER the rig is created,
+        like a user dragging or scrolling in the window."""
+        camera = FakeDebugCamera()
+        patches = [mock.patch.object(p, "getDebugVisualizerCamera", camera.get),
+                   mock.patch.object(p, "resetDebugVisualizerCamera", camera.reset)]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        rig = dc.CameraRig(mode)
+        for index, value in ((0, yaw), (1, pitch), (2, distance)):
+            if value is not None:
+                camera.state[index] = value
+        return rig, camera
+
+    def test_c_cycles_through_every_mode_and_wraps(self):
+        rig, _ = self.rig("follow")
+        self.assertEqual([rig.toggle() for _ in range(5)], ["chase", "top", "fixed", "follow", "chase"])
+
+    def test_unknown_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            dc.CameraRig("orbit")
+
+    def test_fixed_camera_never_moves_by_itself(self):
+        rig, camera = self.rig("fixed")
+        resets = camera.resets
+        for _ in range(100):
+            rig.update([5.0, 5.0, 2.0], 1 / 60, 1.0)
+        self.assertEqual(camera.resets, resets)
+
+    def test_follow_camera_tracks_the_drone_but_keeps_the_users_angle(self):
+        rig, camera = self.rig("follow", yaw=200.0, pitch=-10.0, distance=15.0)
+        for _ in range(600):
+            rig.update([6.0, -4.0, 3.0], 1 / 60)
+        yaw, pitch, distance, target = camera.state
+        self.assertEqual((yaw, pitch, distance), (200.0, -10.0, 15.0))
+        self.assertTrue(all(abs(t - w) < 0.01 for t, w in zip(target, (6.0, -4.0, 3.0))))
+
+    def test_chase_camera_settles_behind_the_drone(self):
+        rig, camera = self.rig("chase")
+        for heading in (0.0, 90.0, 180.0, -90.0):
+            for _ in range(600):
+                rig.update([0.0, 0.0, 2.0], 1 / 60, math.radians(heading))
+            forward = camera.get()[5]
+            flat = math.hypot(forward[0], forward[1])                  # ignore the downward pitch
+            self.assertGreater((forward[0] * math.cos(math.radians(heading))
+                                + forward[1] * math.sin(math.radians(heading))) / flat, 0.999,
+                               "camera is not looking along the heading %d" % heading)
+
+    def test_chase_camera_turns_the_short_way_round(self):
+        rig, camera = self.rig("chase", yaw=170.0)
+        biggest = 0.0
+        for _ in range(240):
+            before = camera.state[0]
+            rig.update([0.0, 0.0, 2.0], 1 / 60, math.radians(-100.0))   # wants yaw -190 == +170 ... via 180
+            biggest = max(biggest, abs(dc.angle_difference(camera.state[0], before)))
+        self.assertLess(biggest, 5.0)                                    # never a long swing
+
+    def test_top_camera_looks_straight_down(self):
+        rig, camera = self.rig("top")
+        rig.update([1.0, 2.0, 3.0], 1 / 60)
+        self.assertEqual(camera.state[1], -89.0)
+        self.assertGreaterEqual(camera.state[2], 20.0)
+
+    def test_angle_difference_takes_the_shortest_route(self):
+        self.assertEqual(dc.angle_difference(10, 350), 20)
+        self.assertEqual(dc.angle_difference(350, 10), -20)
+        self.assertEqual(dc.angle_difference(90, 90), 0)
+        self.assertAlmostEqual(abs(dc.angle_difference(180, 0)), 180)
+
+
+class RecordingText:
+    """Stands in for p.addUserDebugText and records every call."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, text, position, **kwargs):
+        self.calls.append((text, position, kwargs))
+        return len(self.calls)
+
+    def replaced(self):
+        return [c for c in self.calls if "replaceItemUniqueId" in c[2]]
+
+
+class HudTests(unittest.TestCase):
+    BODY = 7
+
+    def hud(self, **kwargs):
+        return dc.Hud(self.BODY, dc.DEFAULT_OBSTACLES, **kwargs)
+
+    def recording(self):
+        recorder = RecordingText()
+        patch = mock.patch.object(p, "addUserDebugText", recorder)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return recorder
+
+    def test_four_labels_stacked_top_to_bottom(self):
+        rows = self.hud().lines(quiet_controller(), "")
+        self.assertEqual([r[0] for r in rows], ["mode", "data", "obstacle", "heard"])
+        heights = [r[3] for r in rows]
+        self.assertEqual(heights, sorted(heights, reverse=True))
+        self.assertAlmostEqual(heights[2] - heights[3], dc.Hud.SPACING)
+
+    def test_labels_show_state_position_speed_obstacle_and_heard(self):
+        c = airborne(dc.DEFAULT_OBSTACLES)
+        c.pos = [1.5, -2.25, 2.0]
+        c.apply_intent(Intent.ROTATE_LEFT, 90.0)
+        text = {k: t for k, t, *_ in self.hud().lines(c, "rotate left 90")}
+        self.assertIn("ROTATE LEFT 90", text["mode"])
+        self.assertIn("x +1.5", text["data"])
+        self.assertIn("z 2.0", text["data"])
+        self.assertIn("hdg 000", text["data"])
+        self.assertIn("m/s", text["data"])
+        self.assertIn("OBSTACLE", text["obstacle"])
+        self.assertEqual(text["heard"], 'heard "rotate left 90"')
+
+    def test_nothing_heard_shows_a_dash(self):
+        text = {k: t for k, t, *_ in self.hud().lines(quiet_controller(), "")}
+        self.assertEqual(text["heard"], "heard -")
+
+    def test_obstacle_line_goes_green_amber_red_as_the_drone_closes_in(self):
+        hud = self.hud()
+        c = quiet_controller(dc.DEFAULT_OBSTACLES)
+        results = {}
+        for label, x in (("far", -10.0), ("near", -1.0), ("close", 0.5)):
+            c.pos = [x, 0.0, 2.0]
+            results[label] = hud.obstacle_line(c)
+        self.assertEqual(results["far"][1], [0.4, 1.0, 0.5])
+        self.assertEqual(results["near"][1], [1.0, 0.85, 0.2])
+        self.assertEqual(results["close"][1], [1.0, 0.25, 0.2])
+        self.assertIn(" m", results["close"][0])
+        c.pos = [-30.0, 0.0, 2.0]
+        self.assertEqual(hud.obstacle_line(c)[0], "OBSTACLE  clear")
+        self.assertIn("none", dc.Hud(self.BODY, ()).obstacle_line(c)[0])
+
+    def test_status_colour_tells_the_state_at_a_glance(self):
+        colour = dc.Hud._colour
+        c = quiet_controller()
+        self.assertEqual(colour(c), [1.0, 1.0, 1.0])                           # parked: white
+        c.apply_intent(Intent.TAKEOFF)
+        self.assertEqual(colour(c), [0.3, 0.9, 1.0])                           # taking off: cyan
+        c = airborne()
+        self.assertEqual(colour(c), [0.4, 1.0, 0.5])                           # hovering: green
+        c.apply_intent(Intent.FORWARD)
+        self.assertEqual(colour(c), [1.0, 0.9, 0.2])                           # moving: yellow
+        c.label = "OBSTACLE STOP"
+        self.assertEqual(colour(c), [1.0, 0.25, 0.2])                          # held at obstacle: red
+
+    def test_labels_are_attached_to_the_drone_so_the_window_moves_them_for_free(self):
+        recorder = self.recording()
+        self.hud().update(quiet_controller(), "", 1.0)
+        self.assertEqual(len(recorder.calls), 4)
+        for _, position, kwargs in recorder.calls:
+            self.assertEqual(kwargs["parentObjectUniqueId"], self.BODY)
+            self.assertEqual(kwargs["parentLinkIndex"], -1)
+            self.assertEqual(position[:2], [0.0, 0.0])                          # straight above the drone
+
+    def test_text_that_has_not_changed_is_never_rewritten(self):
+        recorder = self.recording()
+        hud, c = self.hud(), quiet_controller()
+        hud.update(c, "", 1.0)
+        for t in (1.1, 2.0, 5.0, 60.0):
+            hud.update(c, "", t)
+        self.assertEqual(len(recorder.calls), 4)                               # only the initial creation
+
+    def test_rewrites_are_rate_limited_to_one_label_per_call(self):
+        recorder = self.recording()
+        hud = self.hud()
+        c = airborne(dc.DEFAULT_OBSTACLES)
+        hud.update(c, "", 1.0)
+        self.assertEqual(len(recorder.calls), 4)
+        c.apply_intent(Intent.FORWARD)               # mode, position/speed and obstacle distance all change
+        for _ in range(30):
+            c.step(1 / 60)
+        hud.update(c, "", 1.1)
+        self.assertEqual(len(recorder.replaced()), 0)                           # too soon after creation
+        hud.update(c, "", 1.6)
+        self.assertEqual(len(recorder.replaced()), 1)                           # one label per call...
+        hud.update(c, "", 1.61)
+        self.assertEqual(len(recorder.replaced()), 2)                           # ...the next on the next call
+        hud.update(c, "", 1.62)
+        self.assertEqual(len(recorder.replaced()), 3)                           # ...until all three have caught up
+        hud.update(c, "", 1.63)
+        self.assertEqual(len(recorder.replaced()), 3)                           # and then nothing more is written
+        self.assertEqual(len({kw["replaceItemUniqueId"] for _, _, kw in recorder.replaced()}), 3)
+
+    def test_a_label_is_not_rewritten_twice_within_half_a_second(self):
+        recorder = self.recording()
+        hud = self.hud()
+        c = airborne(dc.DEFAULT_OBSTACLES)
+        hud.update(c, "", 1.0)
+        c.apply_intent(Intent.FORWARD)
+        hud.update(c, "", 1.6)                                                  # a label is rewritten
+        first = len(recorder.replaced())
+        c.apply_intent(Intent.STOP)
+        hud.update(c, "", 1.65)                                                 # changed again 50 ms later
+        mode_rewrites = [call for call in recorder.replaced() if call[0] in ("FORWARD", "STOP")]
+        self.assertEqual(len(mode_rewrites), 1)                                 # the mode label only once so far
+        self.assertGreaterEqual(len(recorder.replaced()), first)
+
+    def test_hud_can_be_hidden(self):
+        recorder = self.recording()
+        self.hud(enabled=False).update(quiet_controller(), "", 1.0)
+        self.assertEqual(recorder.calls, [])
+
+    def test_resizing_rescales_text_and_line_spacing_and_is_clamped(self):
+        recorder = self.recording()
+        hud, c = self.hud(), quiet_controller()
+        hud.update(c, "", 1.0)
+        base_size = recorder.calls[1][2]["textSize"]
+        base_gap = recorder.calls[0][1][2] - recorder.calls[1][1][2]
+        self.assertAlmostEqual(hud.resize(1.25), 1.25)
+        for i in range(8):                                                      # one label per call, so a few calls
+            hud.update(c, "", 10.0 + i * 0.6)
+        latest = {}
+        for text, position, kwargs in recorder.calls[4:]:
+            latest[kwargs["replaceItemUniqueId"]] = (kwargs["textSize"], position[2])
+        self.assertEqual(len(latest), 4)                                        # every label was redone
+        data_size, data_height = latest[2]
+        self.assertAlmostEqual(data_size, base_size * 1.25)
+        self.assertAlmostEqual(latest[1][1] - data_height, base_gap * 1.25)
+        for _ in range(30):
+            hud.resize(0.5)
+        self.assertEqual(hud.scale, 0.3)                                        # clamped, never vanishes
+        for _ in range(30):
+            hud.resize(2.0)
+        self.assertEqual(hud.scale, 4.0)
+
+    def test_bracket_keys_resize_the_hud(self):
+        c = quiet_controller()
+        with mock.patch.object(p, "getKeyboardEvents",
+                               return_value={ord("["): p.KEY_WAS_TRIGGERED, ord("]"): p.KEY_WAS_TRIGGERED}):
+            triggered = dc.KeyboardInput().poll(c)
+        self.assertEqual(set(triggered), {Intent.HUD_SMALLER, Intent.HUD_BIGGER})
+
+    def test_zone_gap_is_distance_to_the_safety_zone_surface(self):
+        ob = dc.DEFAULT_OBSTACLES[0]
+        face = zone_face_x(ob)
+        self.assertAlmostEqual(dc.zone_gap([face - 2.0, 0.0, 2.0], ob), 2.0, places=6)
+        self.assertEqual(dc.zone_gap([face + 0.5, 0.0, 2.0], ob), 0.0)         # inside the zone
+        self.assertAlmostEqual(dc.zone_gap([face - 3.0, 4.0 + 2.27, 2.0], ob),
+                               math.hypot(3.0, 4.0), places=1)
 
 
 class TelemetryTests(unittest.TestCase):
