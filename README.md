@@ -7,6 +7,24 @@
 **Data Driven Control of Drones** · B.Tech Artificial Intelligence Engineering
 School of Artificial Intelligence, Amrita Vishwa Vidyapeetham, Coimbatore
 
+<a id="team"></a>
+## Team
+
+### Faculty Supervisor
+
+| Role | Name | Email |
+|---|---|---|
+| Faculty Supervisor | Prof. S. Sunil Kumar | s_sunilkumar@cb.amrita.edu |
+
+### Team Members
+
+| Name | Roll number | Email |
+|---|---|---|
+| C. Karthik | CB.SC.U4AIE24107 | cb.sc.u4aie24107@cb.students.amrita.edu |
+| Ch. Virinchi | CB.SC.U4AIE24158 | cb.sc.u4aie24158@cb.students.amrita.edu |
+| K. Jatin Chandra Gupta | CB.SC.U4AIE24162 | cb.sc.u4aie24162@cb.students.amrita.edu |
+| M. Som Praneeth Babu | CB.SC.U4AIE24029 | cb.sc.u4aie24029@cb.students.amrita.edu |
+
 <a id="abstract"></a>
 ## Abstract
 
@@ -23,6 +41,7 @@ We built four separate models on purpose. Each simulator has different strengths
 
 ## Contents
 
+- [Team](#team)
 - [Abstract](#abstract)
 - [Introduction](#introduction)
 
@@ -31,7 +50,6 @@ We built four separate models on purpose. Each simulator has different strengths
 3. [Model 2 · MuJoCo — a controller built from learned physics, on a campus map](#model-2)
 4. [Model 3 · Gazebo — learned-physics controller, summary](#model-3)
 5. [Model 4 · MATLAB — Drone Flight Lab with telemetry analysis](#model-4)
-6. [Team](#team)
 
 ---
 
@@ -1020,23 +1038,3 @@ Do not create empty arrays merely to silence an undefined-variable error: the gr
 | Drone stops near an obstacle | Safety check may have flagged the protected region | Inspect obstacle geometry and the configured safety margin; do not assume the stop is a bug without checking. |
 
 **Main reference:** the submitted MATLAB source and its associated helper files. Any implementation-specific behaviour, numerical results, or safety claims should be confirmed against those files and measured simulation output.
-
----
-
-<a id="team"></a>
-## Team
-
-### Faculty Supervisor
-
-| Role | Name | Email |
-|---|---|---|
-| Faculty Supervisor | Prof. S. Sunil Kumar | s_sunilkumar@cb.amrita.edu |
-
-### Team Members
-
-| Name | Roll number | Email |
-|---|---|---|
-| C. Karthik | CB.SC.U4AIE24107 | cb.sc.u4aie24107@cb.students.amrita.edu |
-| Ch. Virinchi | CB.SC.U4AIE24158 | cb.sc.u4aie24158@cb.students.amrita.edu |
-| K. Jatin Chandra Gupta | CB.SC.U4AIE24162 | cb.sc.u4aie24162@cb.students.amrita.edu |
-| M. Som Praneeth Babu | CB.SC.U4AIE24029 | cb.sc.u4aie24029@cb.students.amrita.edu |
