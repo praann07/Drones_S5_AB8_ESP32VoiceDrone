@@ -1,8 +1,30 @@
+<p align="center">
+  <img src="amrita_logo.png" alt="Amrita Vishwa Vidyapeetham" width="420"/>
+</p>
+
 # Voice-Controlled Drone — Four Simulation Models
 
-A voice-controlled drone project, built and tested in four different simulation environments. Each model flies the same kind of drone and accepts the same kind of spoken commands, but each one focuses on a different part of the problem: how the drone is modelled, how it is controlled, and how safely it moves.
+**Data Driven Control of Drones** · B.Tech Artificial Intelligence Engineering
+School of Artificial Intelligence, Amrita Vishwa Vidyapeetham, Coimbatore
+
+<a id="abstract"></a>
+## Abstract
+
+This project builds a drone that can be flown by voice, and tests the idea in four different simulators: PyBullet, MuJoCo, Gazebo and MATLAB. In every one of them a person speaks (or types) a short command such as "forward", "stop" or "go to the library", and a simulated quadrotor carries it out. The four models share one voice front end and differ in what they study. The PyBullet model concentrates on understanding messy speech, exact moves and stopping safely before an obstacle. The MuJoCo and Gazebo models identify the drone's rotational dynamics from its own flight data (with SINDy, sparse identification of nonlinear dynamics) and calculate the attitude controller from the learned equation instead of tuning it by hand; DMDc (dynamic mode decomposition with control) is used as a linear check. The MATLAB model adds a command interface, an obstacle-stop check and telemetry analysis in a 3D city. In the MuJoCo model the learned equation predicts held-out data with R² ≈ 0.995, and the drone flies a 1:10 scale model of the Amrita Coimbatore campus, going to any of 31 named buildings by voice. All results are from simulation; there was no hardware flight.
+
+<a id="introduction"></a>
+## Introduction
+
+A quadrotor has four propellers and no steering wheel. Tilting, turning, moving and holding still all come from choosing four thrust values hundreds of times per second, so a controller is needed between what a person wants and what the motors do. Two practical questions follow. How does a person tell the drone what to do in plain words? And how do we know the controller matches the real physics of the vehicle?
+
+This repository answers both in stages. The first half is the **voice interface**: speech is turned into text, the text is matched fuzzily to a list of known commands, and a command is accepted only when it is close enough, so a mis-heard word does nothing rather than the wrong thing. The second half is the **flight side**: depending on the model, the drone is moved by a simple kinematic model, by a controller built from an identified equation, or by a command interface with telemetry. A recognised command is always treated as a request, and each model checks it against obstacles, map edges and building cells before the drone moves.
+
+We built four separate models on purpose. Each simulator has different strengths, and comparing them shows which design choices matter. The sections below first explain the voice recognition common to all models, then give each model its own write-up: the problem, the idea, the mathematics, what it can do, the world it flies in, and what is and is not claimed.
 
 ## Contents
+
+- [Abstract](#abstract)
+- [Introduction](#introduction)
 
 1. [Voice Recognition (common to all models)](#voice-recognition)
 2. [Model 1 · PyBullet — exact moves and safe stopping in a city](#model-1)
@@ -1004,9 +1026,17 @@ Do not create empty arrays merely to silence an undefined-variable error: the gr
 <a id="team"></a>
 ## Team
 
-| Name | Roll number |
-|---|---|
-| Som Praneeth Babu M | CB.SC.U4AIE24029 |
-| Sai Karthik C | CB.SC.U4AIE24107 |
-| Virinchi Sai Ch | CB.SC.U4AIE24158 |
-| Jatin Chandra Gupta K | CB.SC.U4AIE24162 |
+### Faculty Supervisor
+
+| Role | Name | Email |
+|---|---|---|
+| Faculty Supervisor | Prof. S. Sunil Kumar | s_sunilkumar@cb.amrita.edu |
+
+### Team Members
+
+| Name | Roll number | Email |
+|---|---|---|
+| C. Karthik | CB.SC.U4AIE24107 | cb.sc.u4aie24107@cb.students.amrita.edu |
+| Ch. Virinchi | CB.SC.U4AIE24158 | cb.sc.u4aie24158@cb.students.amrita.edu |
+| K. Jatin Chandra Gupta | CB.SC.U4AIE24162 | cb.sc.u4aie24162@cb.students.amrita.edu |
+| M. Som Praneeth Babu | CB.SC.U4AIE24029 | cb.sc.u4aie24029@cb.students.amrita.edu |
