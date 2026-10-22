@@ -490,7 +490,7 @@ The map is a **1:10 scale copy of the Amrita Coimbatore campus**: 86 buildings (
 | If you want… | Read |
 |---|---|
 | The full report, all results, and how to run it | [`drone_mujoco` README](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_mujoco#readme) |
-| Every idea explained from zero, in plain language | [`PROJECT_EXPLAINED.md`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/drone_mujoco/PROJECT_EXPLAINED.md) *(available once pushed)* |
+| Every idea explained from zero, in plain language | [`PROJECT_EXPLAINED.md`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/drone_mujoco/PROJECT_EXPLAINED.md) |
 | The controller and sensors in depth | [`CONTROLLER_AND_IMU_EXPLAINED.md`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/drone_mujoco/CONTROLLER_AND_IMU_EXPLAINED.md) |
 | The video | [`campus_demo.mp4`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/drone_mujoco/docs/recordings/campus_demo.mp4) |
 | To fly it yourself | Double-click `RUN.bat` on the branch, press **1**, then speak or type |
@@ -785,7 +785,7 @@ RMSE_3D = sqrt( (1/N) · Σ e_3D(k)² )
 
 These measures should only be reported after calculating them from actual telemetry. A plot by itself does not establish a numerical RMSE.
 
-![Axis Wise and 3D Tracking Error](DroneFlight_Outputs_Separated/DroneFlight_Outputs_Separated/04_Tracking_Error/axis_wise_and_3d_tracking_error.png)
+![Axis Wise and 3D Tracking Error](https://raw.githubusercontent.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/Drones_Matlab/DroneFlightLab_MATLAB/outputs/axis_wise_and_3d_tracking_error.png)
 
 #### 3.3 Velocity and total speed
 
@@ -813,7 +813,7 @@ where `Δt` is the simulation time step. This is a general relationship for inte
 
 Velocity helps distinguish between two situations that may look similar in a screenshot: a drone passing through a target position at speed, and a drone arriving and settling near the target. To evaluate a hover or landing action, inspect both position and velocity rather than position alone.
 
-![Velocity Components and Total Speed](DroneFlight_Outputs_Separated/DroneFlight_Outputs_Separated/05_Velocity_and_Speed/velocity_components_and_total_speed.png)
+![Velocity Components and Total Speed](https://raw.githubusercontent.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/Drones_Matlab/DroneFlightLab_MATLAB/outputs/velocity_components_and_total_speed.png)
 
 #### 3.4 Actual versus target plots
 
@@ -827,11 +827,11 @@ The actual curve should respond to command changes and, when the simulated contr
 
 If actual and target curves overlap, that suggests small tracking error at the scale of the graph. It does not automatically prove perfect tracking: axes may hide small differences, and the logged data and calculation should still be checked.
 
-![East Position Actual vs Target](DroneFlight_Outputs_Separated/DroneFlight_Outputs_Separated/01_East_Position/east_position_actual_vs_target.png)
+![East Position Actual vs Target](https://raw.githubusercontent.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/Drones_Matlab/DroneFlightLab_MATLAB/outputs/east_position_actual_vs_target.png)
 
-![North Position Actual vs Target](DroneFlight_Outputs_Separated/DroneFlight_Outputs_Separated/02_North_Position/north_position_actual_vs_target.png)
+![North Position Actual vs Target](https://raw.githubusercontent.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/Drones_Matlab/DroneFlightLab_MATLAB/outputs/north_position_actual_vs_target.png)
 
-![Altitude Actual vs Target](DroneFlight_Outputs_Separated/DroneFlight_Outputs_Separated/03_Altitude/altitude_actual_vs_target.png)
+![Altitude Actual vs Target](https://raw.githubusercontent.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/Drones_Matlab/DroneFlightLab_MATLAB/outputs/altitude_actual_vs_target.png)
 
 #### 3.5 Attitude and motor outputs
 
@@ -839,7 +839,7 @@ If the simulation logs them, attitude plots can display roll, pitch, and yaw. Th
 
 A sudden attitude change may coincide with a command transition or correction, but it should be interpreted alongside position, velocity, and the command timeline. No numerical attitude limit or motor-performance claim should be made unless it is defined and verified in the actual code.
 
-![Drone Attitude Roll Pitch Yaw](DroneFlight_Outputs_Separated/DroneFlight_Outputs_Separated/06_Drone_Attitude/drone_attitude_roll_pitch_yaw.png)
+![Drone Attitude Roll Pitch Yaw](https://raw.githubusercontent.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/Drones_Matlab/DroneFlightLab_MATLAB/outputs/drone_attitude_roll_pitch_yaw.png)
 
 #### 3.6 Why data alignment matters
 
