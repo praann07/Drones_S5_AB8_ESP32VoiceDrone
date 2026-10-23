@@ -3,12 +3,16 @@
 import csv
 import math
 import os
+import json
 import queue
+import socket
 import struct
 import sys
 import tempfile
 import threading
 import unittest
+import urllib.error
+import urllib.request
 import zlib
 from unittest import mock
 from xml.etree import ElementTree
@@ -19,6 +23,7 @@ import pybullet_data
 import drone_core as dc
 import scene_assets as sa
 import scene_city as sc
+from dashboard import Dashboard
 from drone_core import DroneController, FlightMode, Intent, parse_command
 
 DT = 1.0 / 60.0
@@ -1536,6 +1541,149 @@ class HudTests(unittest.TestCase):
         self.assertEqual(dc.zone_gap([face + 0.5, 0.0, 2.0], ob), 0.0)         # inside the zone
         self.assertAlmostEqual(dc.zone_gap([face - 3.0, 4.0 + 2.27, 2.0], ob),
                                math.hypot(3.0, 4.0), places=1)
+
+
+class DashboardTests(unittest.TestCase):
+    CONFIG = {"obstacles": [], "geofence": 12.0}
+
+    def start(self, **kwargs):
+        dashboard = Dashboard(self.CONFIG, port=0, **kwargs)          # port 0: let the system pick a free one
+        url = dashboard.start()
+        self.addCleanup(dashboard.stop)
+        return dashboard, url
+
+    @staticmethod
+    def get(url, path):
+        with urllib.request.urlopen(url.rstrip("/") + path, timeout=5) as reply:
+            return reply.status, reply.headers.get("Content-Type"), reply.read()
+
+    def test_serves_the_page_and_the_scene_facts(self):
+        _, url = self.start()
+        status, kind, body = self.get(url, "/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", kind)
+        for needle in (b"<title>Drone live graphs</title>", b'id="c-alt"', b'id="c-speed"', b'id="c-gap"',
+                       b'id="c-pos"', b'id="c-map"', b'id="c-strip"', b'id="log"'):
+            self.assertIn(needle, body)
+        self.assertEqual(self.get(url, "/?theme=dark")[2], body)        # a query string does not change what is served
+        config = json.loads(self.get(url, "/api/config")[2])
+        self.assertEqual(config["geofence"], 12.0)
+        self.assertEqual(config["sample_hz"], Dashboard.SAMPLE_HZ)
+
+    def test_it_only_listens_on_this_computer(self):
+        dashboard, url = self.start()
+        self.assertEqual(dashboard._server.server_address[0], "127.0.0.1")
+        self.assertTrue(url.startswith("http://127.0.0.1:"))
+
+    def test_samples_are_recorded_at_most_ten_times_a_second(self):
+        dashboard = Dashboard(self.CONFIG)
+        c = airborne()
+        t = dashboard.start_time
+        self.assertTrue(dashboard.record(c, now=t + 1.00))
+        self.assertFalse(dashboard.record(c, now=t + 1.05))           # too soon
+        self.assertTrue(dashboard.record(c, now=t + 1.11))
+        self.assertEqual(len(dashboard.data()["samples"]), 2)
+
+    def test_a_sample_describes_the_drone(self):
+        dashboard = Dashboard(self.CONFIG, gap_fn=lambda controller: 1.2345)
+        c = airborne()
+        c.yaw = -math.pi / 2                                            # facing 270 degrees
+        dashboard.record(c, now=dashboard.start_time + 3.0)
+        sample = dashboard.data()["samples"][0]
+        self.assertEqual((sample["t"], sample["z"], sample["label"], sample["mode"]), (3.0, 2.0, "HOVER", "FLYING"))
+        self.assertEqual(sample["yaw"], 270.0)
+        self.assertEqual(sample["gap"], 1.23)
+        self.assertEqual((sample["hs"], sample["vz"]), (0.0, 0.0))
+        no_obstacles = Dashboard(self.CONFIG)
+        no_obstacles.record(c, now=no_obstacles.start_time + 1.0)
+        self.assertIsNone(no_obstacles.data()["samples"][0]["gap"])
+
+    def test_the_browser_only_gets_what_is_new(self):
+        dashboard = Dashboard(self.CONFIG)
+        c = airborne()
+        for i in range(3):
+            dashboard.record(c, now=dashboard.start_time + i)
+        dashboard.event("command", "forward", "FORWARD", now=dashboard.start_time + 1.0)
+        dashboard.event("rejected", "banana", "not recognised", now=dashboard.start_time + 2.0)
+        first = dashboard.data(0, 0)
+        self.assertEqual((len(first["samples"]), len(first["events"]), first["s"], first["e"]), (3, 2, 3, 2))
+        again = dashboard.data(first["s"], first["e"])
+        self.assertEqual((again["samples"], again["events"], again["s"], again["e"]), ([], [], 3, 2))
+        dashboard.record(c, now=dashboard.start_time + 5)
+        newest = dashboard.data(first["s"], first["e"])
+        self.assertEqual([s["t"] for s in newest["samples"]], [5.0])
+        self.assertEqual(newest["events"], [])
+
+    def test_events_keep_what_was_said_and_what_it_meant(self):
+        dashboard = Dashboard(self.CONFIG)
+        dashboard.event("command", "go forward 3 meters", "FORWARD 3 m", now=dashboard.start_time + 4.0)
+        self.assertEqual(dashboard.data()["events"],
+                         [{"t": 4.0, "kind": "command", "text": "go forward 3 meters", "label": "FORWARD 3 m"}])
+
+    def test_the_data_endpoint_returns_json_and_ignores_garbage_in_the_query(self):
+        dashboard, url = self.start()
+        dashboard.record(airborne(), now=dashboard.start_time + 1.0)
+        status, kind, body = self.get(url, "/api/data?s=0&e=0")
+        self.assertEqual((status, kind), (200, "application/json"))
+        self.assertEqual(len(json.loads(body)["samples"]), 1)
+        self.assertEqual(len(json.loads(self.get(url, "/api/data?s=abc&e=%00")[2])["samples"]), 1)   # treated as 0
+        self.assertEqual(json.loads(self.get(url, "/api/data?s=1&e=0")[2])["samples"], [])
+
+    def test_old_samples_are_dropped_but_the_counters_keep_counting(self):
+        dashboard = Dashboard(self.CONFIG, history=20)
+        c = airborne()
+        for i in range(100):
+            dashboard.record(c, now=dashboard.start_time + i)
+            dashboard.event("command", "x", str(i), now=dashboard.start_time + i)
+        everything = dashboard.data(0, 0)
+        self.assertLessEqual(len(everything["samples"]), 20)
+        self.assertEqual(everything["s"], 100)                          # still counts all 100
+        self.assertEqual(everything["samples"][-1]["t"], 99.0)          # newest kept
+        self.assertEqual([s["t"] for s in dashboard.data(95, 0)["samples"]], [95.0, 96.0, 97.0, 98.0, 99.0])
+
+    def test_nothing_but_the_page_and_the_data_is_served(self):
+        _, url = self.start()
+        for path in ("/nope", "/../drone_core.py", "/dashboard.py", "/drone_data.csv", "/api"):
+            with self.subTest(path=path):
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    self.get(url, path)
+                self.assertEqual(caught.exception.code, 404)
+
+    def test_if_the_port_is_taken_the_next_free_one_is_used(self):
+        taken = socket.socket()
+        self.addCleanup(taken.close)
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        busy = taken.getsockname()[1]
+        dashboard = Dashboard(self.CONFIG, port=busy)
+        url = dashboard.start()
+        self.addCleanup(dashboard.stop)
+        port = int(url.rstrip("/").rsplit(":", 1)[1])
+        self.assertNotEqual(port, busy)
+        self.assertLess(port - busy, Dashboard.MAX_PORT_TRIES)
+        self.assertEqual(self.get(url, "/api/config")[0], 200)
+
+    def test_stopping_closes_the_server(self):
+        dashboard, url = self.start()
+        self.assertEqual(self.get(url, "/api/config")[0], 200)
+        dashboard.stop()
+        with self.assertRaises(urllib.error.URLError):
+            self.get(url, "/api/config")
+        dashboard.stop()                                                # stopping twice is harmless
+
+    def test_scene_facts_for_the_graphs_match_the_simulation(self):
+        c = quiet_controller(dc.DEFAULT_OBSTACLES)
+        config = dc.dashboard_config(dc.DEFAULT_OBSTACLES, c, "city", "stop")
+        self.assertEqual([o["name"] for o in config["obstacles"]], [o.name for o in dc.DEFAULT_OBSTACLES])
+        self.assertEqual(config["geofence"], dc.WORLD_LIMIT)
+        self.assertEqual(config["takeoff_height"], dc.TAKEOFF_HEIGHT)
+        self.assertEqual(config["stop_distance"], dc.STOP_BUFFER)
+        self.assertAlmostEqual(config["zone_grow"], dc.DRONE_RADIUS + dc.SAFETY_DISTANCE)
+        self.assertEqual(config["plaza"], sc.PLAZA)
+        self.assertEqual(config["obstacle_strategy"], "stop")
+        json.dumps(config)                                              # must be JSON-serialisable
+        plain = dc.dashboard_config((), quiet_controller(), "simple", "stop")
+        self.assertEqual((plain["obstacles"], plain["obstacle_strategy"], plain["plaza"]), ([], None, None))
 
 
 class TelemetryTests(unittest.TestCase):

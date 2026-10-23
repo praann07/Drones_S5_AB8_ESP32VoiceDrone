@@ -23,6 +23,7 @@ import queue
 import re
 import threading
 import time
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -32,6 +33,7 @@ import pybullet_data
 
 import scene_assets as sa
 import scene_city
+from dashboard import Dashboard
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 URDF_PATH = os.path.join(HERE, "drone.urdf")
@@ -1641,9 +1643,27 @@ def connect_gui():
     return client
 
 
+def dashboard_config(obstacles, controller, scene, on_obstacle):
+    """Fixed facts about the scene for the live graphs: obstacles, limits, home and the reference lines."""
+    return {
+        "scene": scene,
+        "obstacle_strategy": on_obstacle if obstacles else None,
+        "obstacles": [{"name": ob.name, "center": list(ob.center), "half": list(ob.half)} for ob in obstacles],
+        "zone_grow": DRONE_RADIUS + SAFETY_DISTANCE,
+        "geofence": WORLD_LIMIT,
+        "plaza": scene_city.PLAZA if scene == "city" else None,
+        "home": list(controller.home),
+        "pad_radius": 2.15,
+        "takeoff_height": TAKEOFF_HEIGHT, "min_height": MIN_FLIGHT_HEIGHT, "max_height": MAX_HEIGHT,
+        "max_speed": HORIZONTAL_SPEED, "max_vertical_speed": VERTICAL_SPEED,
+        "stop_distance": STOP_BUFFER, "detection_distance": DETECTION_DISTANCE,
+    }
+
+
 def run(voice=True, console=False, obstacles=True, camera="follow",
         log_path=TELEMETRY_PATH, duration=None, trail=True, show_zones=False,
-        on_obstacle="stop", scene="city", hud_size=1.0, hud_on=True, language="en-IN"):
+        on_obstacle="stop", scene="city", hud_size=1.0, hud_on=True, language="en-IN",
+        graphs=True, graphs_port=8765, open_browser=True):
     client = connect_gui()
     if client < 0:
         print("ERROR: could not connect to the PyBullet GUI. Close any old PyBullet windows and retry.")
@@ -1657,6 +1677,18 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
     hud = Hud(model.body, zones, hud_size, hud_on)
     overlays = Overlays(zones, trail, show_zones)
     keyboard = KeyboardInput()
+
+    dashboard, graphs_url = None, None
+    if graphs:
+        nearest_gap = (lambda c: min(zone_gap(c.pos, ob) for ob in zones)) if zones else None
+        dashboard = Dashboard(dashboard_config(zones, controller, scene, on_obstacle), nearest_gap, graphs_port)
+        try:
+            graphs_url = dashboard.start()
+            if open_browser:
+                webbrowser.open(graphs_url)
+        except OSError as error:
+            print("Live graphs unavailable (%s)." % error)
+            dashboard = None
 
     logger = None
     if log_path:
@@ -1684,6 +1716,8 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
     print("Keys (click the PyBullet window first): T take off, L land, H go home, W/A/S/D move,")
     print("      Q/E up/down, arrows rotate, SPACE stop, C camera, P trail, Z safety zones, X exit")
     print("Voice/typed commands accept a distance or angle: 'forward 3 meters', 'rotate left 90 degrees'.")
+    if graphs_url:
+        print("Live graphs: %s  (altitude, speed, position, obstacle distance, map, commands)" % graphs_url)
     print("The drone starts on the ground: take off first.\n")
 
     heard, heard_at, frame = "", 0.0, 0
@@ -1702,6 +1736,8 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
                 print("\nYOU SAID:" if source == "voice" else "\nYOU TYPED:", text)
                 if intent is None:
                     print(">> COMMAND NOT RECOGNIZED")
+                    if dashboard:
+                        dashboard.event("rejected", text, "not recognised")
                     continue
                 heard, heard_at = text, now
                 requests.append((intent, amount, text))
@@ -1718,7 +1754,11 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
                     else:
                         print("No obstacles in this mode (try obstacles.py or --obstacles).")
                 else:
-                    controller.apply_intent(intent, amount)
+                    accepted = controller.apply_intent(intent, amount)
+                    if dashboard:
+                        name = intent.value + (" %g" % amount if amount else "")
+                        dashboard.event("command" if accepted else "rejected", said or "keyboard",
+                                        name if accepted else "refused: " + name)
                 if logger:
                     logger.log(controller, said)
 
@@ -1728,6 +1768,8 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
             world.update(controller, model.clock)
             overlays.update(controller, now)
             hud.update(controller, heard if now - heard_at < 8.0 else "", now)
+            if dashboard:
+                dashboard.record(controller)
             if logger:
                 logger.tick(controller)
             # Nothing here is a dynamic body, so the physics step is only a keep-alive for the window;
@@ -1741,6 +1783,8 @@ def run(voice=True, console=False, obstacles=True, camera="follow",
         pass                                            # the window was closed mid-frame
     finally:
         stop.set()
+        if dashboard:
+            dashboard.stop()
         if logger:
             logger.close()
         if p.isConnected():
@@ -1780,6 +1824,12 @@ def main(description, voice, obstacles):
     parser.add_argument("--hud-size", type=float, default=1.0, metavar="SCALE",
                         help="scale of the on-screen text (also [ and ] while flying)")
     parser.add_argument("--no-hud", action="store_true", help="hide the on-screen text")
+    parser.add_argument("--graphs", action=argparse.BooleanOptionalAction, default=True,
+                        help="serve live graphs on this computer and open them in the browser (default: on)")
+    parser.add_argument("--graphs-port", type=int, default=8765, metavar="PORT",
+                        help="port for the live graphs (the next ones are tried if it is taken)")
+    parser.add_argument("--no-browser", action="store_true",
+                        help="serve the graphs but do not open the browser (the address is printed)")
     parser.add_argument("--no-trail", action="store_true", help="start with the flight trail hidden")
     parser.add_argument("--zones", action="store_true",
                         help="start with the obstacle safety zones drawn")
@@ -1793,4 +1843,5 @@ def main(description, voice, obstacles):
         voice=args.voice, console=args.console, obstacles=args.obstacles, camera=args.camera,
         log_path=None if args.no_log else args.telemetry_file, duration=args.duration,
         trail=not args.no_trail, show_zones=args.zones, on_obstacle=args.on_obstacle,
-        scene=args.scene, hud_size=args.hud_size, hud_on=not args.no_hud, language=args.language))
+        scene=args.scene, hud_size=args.hud_size, hud_on=not args.no_hud, language=args.language,
+        graphs=args.graphs, graphs_port=args.graphs_port, open_browser=not args.no_browser))

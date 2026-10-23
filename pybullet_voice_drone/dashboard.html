@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone live graphs</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #121a2e; --panel2: #18223b; --text: #e6ecff; --muted: #8a97b8;
+    --grid: rgba(255,255,255,.08); --edge: rgba(255,255,255,.12); --ground: #1d2742;
+    --good: #4ade80; --warn: #fbbf24; --bad: #f87171; --info: #38bdf8;
+    --c1: #60a5fa; --c2: #fb923c; --c3: #c084fc; --tower: #3a4668; --zone: #f87171;
+  }
+  :root[data-theme="light"] {
+    --bg: #eef2fa; --panel: #ffffff; --panel2: #f3f6fc; --text: #14203a; --muted: #5f6d8c;
+    --grid: rgba(20,32,58,.09); --edge: rgba(20,32,58,.16); --ground: #e3e9f6;
+    --good: #16a34a; --warn: #d97706; --bad: #dc2626; --info: #0284c7;
+    --c1: #2563eb; --c2: #ea580c; --c3: #9333ea; --tower: #8a97b8; --zone: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding: 14px 20px;
+           border-bottom: 1px solid var(--edge); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  h1 small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
+  .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px;
+          background: var(--panel2); border: 1px solid var(--edge); font-size: 12.5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--good); box-shadow: 0 0 0 0 rgba(74,222,128,.6); animation: pulse 1.6s infinite; }
+  .dot.off { background: var(--bad); }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 8px rgba(74,222,128,0); } 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); } }
+  select, button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--edge);
+                   border-radius: 8px; padding: 5px 11px; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--info); }
+  main { padding: 16px 20px 28px; max-width: 1500px; margin: 0 auto; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .tile { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; padding: 11px 14px; }
+  .tile .k { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .7px; }
+  .tile .v { font-size: 22px; font-weight: 650; margin-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .tile .v small { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 12px 14px 10px;
+          grid-column: span 6; min-width: 0; }
+  .card h2 { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+  .card h2 span { color: var(--muted); font-weight: 400; font-size: 12px; }
+  canvas { display: block; width: 100%; }
+  .chart { height: 210px; }
+  .map { height: 380px; }          /* the real height is set from the width in sizeMap() */
+  .strip { height: 62px; }
+  .wide { grid-column: span 12; }
+  #log { list-style: none; margin: 8px 0 0; padding: 0; max-height: 238px; overflow: auto; font-size: 13px; }
+  #log li { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 5px 0; border-top: 1px solid var(--edge); }
+  #log li:first-child { border-top: 0; }
+  #log .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  #log .what { font-weight: 600; }
+  #log .said { color: var(--muted); font-weight: 400; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 6px 0 22px; }
+  @media (max-width: 900px) { .card { grid-column: span 12; } header { position: static; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Voice-controlled drone <small id="subtitle">live graphs</small></h1>
+  <span class="pill"><span id="dot" class="dot"></span><span id="conn">Connecting...</span></span>
+  <span class="spacer"></span>
+  <label class="pill">Window
+    <select id="window">
+      <option value="30">30 s</option><option value="60" selected>1 min</option>
+      <option value="300">5 min</option><option value="0">Whole flight</option>
+    </select></label>
+  <button id="pause">Pause</button>
+  <button id="csv">Download CSV</button>
+  <button id="theme">Light / dark</button>
+</header>
+
+<main>
+  <section class="tiles">
+    <div class="tile"><div class="k">State</div><div class="v" id="t-state">-</div></div>
+    <div class="tile"><div class="k">Altitude</div><div class="v" id="t-alt">-</div></div>
+    <div class="tile"><div class="k">Speed</div><div class="v" id="t-speed">-</div></div>
+    <div class="tile"><div class="k">Heading</div><div class="v" id="t-yaw">-</div></div>
+    <div class="tile"><div class="k">Position</div><div class="v" id="t-pos">-</div></div>
+    <div class="tile"><div class="k">Nearest obstacle</div><div class="v" id="t-gap">-</div></div>
+    <div class="tile"><div class="k">Commands</div><div class="v" id="t-cmds">0</div></div>
+  </section>
+
+  <section class="grid">
+    <div class="card"><h2>Altitude <span>metres above the floor</span></h2><canvas id="c-alt" class="chart"></canvas></div>
+    <div class="card"><h2>Speed <span>metres per second</span></h2><canvas id="c-speed" class="chart"></canvas></div>
+    <div class="card"><h2>Distance to the nearest obstacle <span>to its safety zone, metres</span></h2><canvas id="c-gap" class="chart"></canvas></div>
+    <div class="card"><h2>Position <span>metres from the helipad</span></h2><canvas id="c-pos" class="chart"></canvas></div>
+    <div class="card"><h2>Map, seen from above <span>flight trail coloured by speed</span></h2><canvas id="c-map" class="map"></canvas>
+      <div class="legend"><span><i style="background:#60a5fa"></i>slow</span><span><i style="background:#fb923c"></i>fast</span>
+        <span><i style="background:transparent;border:1.5px dashed var(--zone)"></i>safety zone</span>
+        <span><i style="background:transparent;border:1.5px dashed var(--muted)"></i>geofence</span></div></div>
+    <div class="card"><h2>Commands <span id="log-count"></span></h2>
+      <canvas id="c-strip" class="strip"></canvas>
+      <div class="legend" id="strip-legend"></div>
+      <ul id="log"></ul></div>
+  </section>
+</main>
+<footer>Served from this computer only (127.0.0.1). Graphs update about five times a second while the simulation runs.</footer>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+};
+
+const S = { cfg: null, samples: [], events: [], s: 0, e: 0, windowSec: 60, paused: false, frozen: 0,
+            connected: false, everConnected: false, commands: 0 };
+
+// ---------------------------------------------------------------- helpers
+const last = a => a.length ? a[a.length - 1] : null;
+const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v)) ? "-" : v.toFixed(d);
+function clock(t) { t = Math.max(0, t); const m = Math.floor(t / 60), s = Math.floor(t % 60); return m + ":" + String(s).padStart(2, "0"); }
+
+function stateColour(label, mode) {
+  if (label === "OBSTACLE STOP") return "--bad";
+  if (mode === "LANDED") return "--muted";
+  if (mode === "TAKEOFF" || mode === "LANDING") return "--info";
+  if (label === "HOVER" || label === "STOP") return "--good";
+  return "--warn";
+}
+
+function niceStep(span, target) {
+  const raw = span / target, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
+}
+
+function prepare(canvas) {
+  const r = canvas.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  const w = Math.max(10, Math.round(r.width * d)), h = Math.max(10, Math.round(r.height * d));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.clearRect(0, 0, r.width, r.height);
+  return { ctx, w: r.width, h: r.height };
+}
+
+// ---------------------------------------------------------------- time-series chart
+function lineChart(id, spec, samples, t0, t1) {
+  const { ctx, w, h } = prepare($(id));
+  const L = 50, R = 12, T = 10, B = 26, W = w - L - R, H = h - T - B;
+  const visible = samples.filter(s => s.t >= t0 - 1 && s.t <= t1 + 0.05);
+
+  let lo = spec.min, hi = spec.max;
+  if (lo === undefined || hi === undefined) {
+    const vals = [];
+    for (const s of visible) for (const ser of spec.series) { const v = ser.get(s); if (v !== null && v !== undefined) vals.push(v); }
+    for (const r of (spec.refs || [])) vals.push(r.y());
+    lo = vals.length ? Math.min(...vals) : 0; hi = vals.length ? Math.max(...vals) : 1;
+    const pad = Math.max((hi - lo) * 0.1, 0.5); lo -= pad; hi += pad;
+  }
+  const X = t => L + (t - t0) / Math.max(t1 - t0, 1e-6) * W;
+  const Y = v => T + H - (Math.min(Math.max(v, lo), hi) - lo) / (hi - lo) * H;
+
+  for (const b of (spec.bands || [])) {                        // shaded zones
+    ctx.fillStyle = b.color; const y1 = Y(b.to()), y0 = Y(b.from()); ctx.fillRect(L, y1, W, y0 - y1);
+  }
+  ctx.font = "11px system-ui, sans-serif"; ctx.textBaseline = "middle"; ctx.lineWidth = 1;
+  const step = niceStep(hi - lo, 5);                           // horizontal grid + y labels
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
+    const y = Y(v); ctx.strokeStyle = css("--grid"); ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + W, y); ctx.stroke();
+    ctx.fillStyle = css("--muted"); ctx.textAlign = "right"; ctx.fillText(fmt(v, step < 1 ? 1 : 0), L - 7, y);
+  }
+  const span = t1 - t0, tstep = niceStep(span, 6);             // vertical grid + time labels
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let t = Math.ceil(t0 / tstep) * tstep; t <= t1 + 1e-9; t += tstep) {
+    const x = X(t); ctx.strokeStyle = css("--grid"); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + H); ctx.stroke();
+    ctx.fillStyle = css("--muted"); ctx.fillText(clock(t), x, T + H + 7);
+  }
+  for (const r of (spec.refs || [])) {                         // reference lines
+    const y = Y(r.y()); ctx.save(); ctx.setLineDash([6, 4]); ctx.strokeStyle = css(r.color); ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + W, y); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = css(r.color); ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.fillText(r.label, L + W - 4, y - 2);
+  }
+  for (const ser of spec.series) {                             // data lines
+    ctx.strokeStyle = css(ser.color); ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.beginPath();
+    let pen = false, first = null, lastPt = null;
+    const stride = Math.max(1, Math.floor(visible.length / (W * 1.5)));
+    for (let i = 0; i < visible.length; i += stride) {
+      const s = visible[i], v = ser.get(s);
+      if (v === null || v === undefined) { pen = false; continue; }
+      const x = X(s.t), y = Y(v);
+      if (!pen) { ctx.moveTo(x, y); pen = true; if (first === null) first = [x, y]; } else ctx.lineTo(x, y);
+      lastPt = [x, y];
+    }
+    ctx.stroke();
+    if (ser.fill && lastPt && first) {
+      ctx.lineTo(lastPt[0], T + H); ctx.lineTo(first[0], T + H); ctx.closePath();
+      const g = ctx.createLinearGradient(0, T, 0, T + H); g.addColorStop(0, css(ser.color) + "55"); g.addColorStop(1, css(ser.color) + "05");
+      ctx.fillStyle = g; ctx.fill();
+    }
+    if (lastPt) { ctx.fillStyle = css(ser.color); ctx.beginPath(); ctx.arc(lastPt[0], lastPt[1], 3.5, 0, 7); ctx.fill(); }
+  }
+  let lx = L + 8;                                              // legend with the latest value
+  ctx.textBaseline = "top"; ctx.textAlign = "left";
+  const latest = last(visible);
+  for (const ser of spec.series) {
+    const v = latest ? ser.get(latest) : null, text = ser.label + (v === null || v === undefined ? "" : "  " + fmt(v, 2));
+    ctx.fillStyle = css(ser.color); ctx.fillRect(lx, T + 4, 10, 10); ctx.fillStyle = css("--text"); ctx.fillText(text, lx + 15, T + 3);
+    lx += 15 + ctx.measureText(text).width + 16;
+  }
+}
+
+// ---------------------------------------------------------------- top-down map
+function sizeMap() {                // keep the map square without relying on CSS aspect-ratio
+  const cv = $("c-map"); cv.style.height = Math.min(Math.max(cv.clientWidth, 260), 560) + "px";
+}
+
+function drawMap(samples, t0, t1) {
+  sizeMap();
+  const { ctx, w, h } = prepare($("c-map")), c = S.cfg, size = Math.min(w, h), half = (c.plaza || c.geofence + 4) + 1;
+  const sc = size / (2 * half), ox = (w - size) / 2 + size / 2, oy = (h - size) / 2 + size / 2;
+  const X = x => ox + x * sc, Y = y => oy - y * sc;
+  ctx.fillStyle = css("--ground"); ctx.fillRect(X(-half), Y(half), 2 * half * sc, 2 * half * sc);
+  ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1; ctx.font = "10.5px system-ui"; ctx.fillStyle = css("--muted");
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let g = -Math.floor(half / 4) * 4; g <= half; g += 4) {
+    ctx.beginPath(); ctx.moveTo(X(g), Y(-half)); ctx.lineTo(X(g), Y(half)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(X(-half), Y(g)); ctx.lineTo(X(half), Y(g)); ctx.stroke();
+    ctx.fillText(g, X(g), Y(-half) - 13);
+  }
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  for (let g = -Math.floor(half / 4) * 4; g <= half; g += 4) if (g) ctx.fillText(g, X(-half) + 3, Y(g));
+  ctx.save(); ctx.setLineDash([7, 5]); ctx.strokeStyle = css("--muted"); ctx.lineWidth = 1.4;           // geofence
+  ctx.strokeRect(X(-c.geofence), Y(c.geofence), 2 * c.geofence * sc, 2 * c.geofence * sc); ctx.restore();
+  ctx.strokeStyle = css("--info"); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(c.home[0]), Y(c.home[1]), c.pad_radius * sc, 0, 7); ctx.stroke();
+  ctx.fillStyle = css("--info"); ctx.font = "bold 12px system-ui"; ctx.textAlign = "center"; ctx.fillText("H", X(c.home[0]), Y(c.home[1]));
+  for (const ob of c.obstacles) {                                                                      // towers + zones
+    const [cx, cy] = ob.center, [hx, hy] = ob.half, g = c.zone_grow;
+    ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = css("--zone"); ctx.lineWidth = 1.3; ctx.fillStyle = "rgba(248,113,113,.08)";
+    ctx.fillRect(X(cx - hx - g), Y(cy + hy + g), 2 * (hx + g) * sc, 2 * (hy + g) * sc);
+    ctx.strokeRect(X(cx - hx - g), Y(cy + hy + g), 2 * (hx + g) * sc, 2 * (hy + g) * sc); ctx.restore();
+    ctx.fillStyle = css("--tower"); ctx.fillRect(X(cx - hx), Y(cy + hy), 2 * hx * sc, 2 * hy * sc);
+    ctx.fillStyle = css("--text"); ctx.font = "10.5px system-ui"; ctx.textAlign = "center"; ctx.fillText(ob.name.replace("Obstacle_", "T"), X(cx), Y(cy));
+  }
+  const trail = samples.filter(s => s.t >= t0 - 1 && s.t <= t1 + 0.05), stride = Math.max(1, Math.floor(trail.length / 900));
+  ctx.lineWidth = 2.6; ctx.lineCap = "round";                                                          // trail by speed
+  for (let i = stride; i < trail.length; i += stride) {
+    const a = trail[i - stride], b = trail[i], f = Math.min(b.hs / c.max_speed, 1);
+    ctx.strokeStyle = `rgb(${Math.round(96 + 155 * f)},${Math.round(165 - 50 * f)},${Math.round(250 - 190 * f)})`;
+    ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.y)); ctx.lineTo(X(b.x), Y(b.y)); ctx.stroke();
+  }
+  const now = last(samples);
+  if (now) {                                                                                           // the drone
+    const col = css(stateColour(now.label, now.mode)), a = -now.yaw * Math.PI / 180, px = X(now.x), py = Y(now.y);
+    ctx.save(); ctx.translate(px, py); ctx.rotate(a); ctx.fillStyle = col; ctx.strokeStyle = css("--bg"); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(13, 0); ctx.lineTo(-9, 8); ctx.lineTo(-5, 0); ctx.lineTo(-9, -8); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+}
+
+// ---------------------------------------------------------------- state strip + commands log
+const KIND = { command: "--c1", heard: "--info", rejected: "--bad" };
+function drawStrip(samples, events, t0, t1) {
+  const { ctx, w, h } = prepare($("c-strip")), L = 6, R = 6, W = w - L - R, X = t => L + (t - t0) / Math.max(t1 - t0, 1e-6) * W;
+  const vis = samples.filter(s => s.t >= t0 - 1 && s.t <= t1 + 0.05);
+  for (let i = 0; i < vis.length; i++) {                                                               // flight phases
+    const s = vis[i], nx = i + 1 < vis.length ? vis[i + 1].t : s.t + 0.1, x0 = Math.max(X(s.t), L), x1 = Math.min(X(nx), L + W);
+    if (x1 > x0) { ctx.fillStyle = css(stateColour(s.label, s.mode)); ctx.globalAlpha = 0.85; ctx.fillRect(x0, 8, x1 - x0 + 0.6, 22); }
+  }
+  ctx.globalAlpha = 1;
+  for (const ev of events) {                                                                           // command markers
+    if (ev.t < t0 || ev.t > t1) continue;
+    const x = X(ev.t), col = css(KIND[ev.kind] || "--muted");
+    ctx.strokeStyle = col; ctx.fillStyle = css("--panel"); ctx.lineWidth = 2; ctx.beginPath();
+    if (ev.kind === "rejected") { ctx.moveTo(x - 4, 38); ctx.lineTo(x + 4, 50); ctx.moveTo(x + 4, 38); ctx.lineTo(x - 4, 50); ctx.stroke(); }
+    else { ctx.arc(x, 44, 4.5, 0, 7); ctx.fill(); ctx.stroke(); }
+  }
+  ctx.fillStyle = css("--muted"); ctx.font = "10.5px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText(clock(t0), L, h - 11); ctx.textAlign = "right"; ctx.fillText(clock(t1), L + W, h - 11);
+}
+
+function legendFor(el, items) {
+  el.innerHTML = items.map(([name, colour]) => `<span><i style="background:var(${colour})"></i>${name}</span>`).join("");
+}
+
+function addLog(ev) {
+  const li = document.createElement("li"), t = document.createElement("span"), what = document.createElement("span");
+  t.className = "t"; t.textContent = clock(ev.t);
+  what.className = "what"; what.style.color = css(KIND[ev.kind] || "--text");
+  const said = ev.text && ev.text !== ev.label ? ` <span class="said">&ldquo;${ev.text.replace(/[<>&]/g, "")}&rdquo;</span>` : "";
+  what.innerHTML = (ev.kind === "rejected" ? "not recognised" : ev.label || ev.text.replace(/[<>&]/g, "")) + said;
+  li.append(t, what); $("log").prepend(li);
+  while ($("log").children.length > 80) $("log").lastChild.remove();
+}
+
+// ---------------------------------------------------------------- charts configuration
+function specs() {
+  const c = S.cfg;
+  return {
+    "c-alt": { min: 0, max: c.max_height + 0.5, series: [{ get: s => s.z, color: "--c1", label: "altitude (m)", fill: true }],
+      refs: [{ y: () => c.takeoff_height, label: "take-off height", color: "--good" }, { y: () => c.min_height, label: "minimum flight height", color: "--muted" }] },
+    "c-speed": { min: -(c.max_vertical_speed + 0.3), max: c.max_speed + 0.4,
+      series: [{ get: s => s.hs, color: "--c1", label: "horizontal" }, { get: s => s.vz, color: "--c2", label: "vertical" }],
+      refs: [{ y: () => c.max_speed, label: "speed limit", color: "--muted" }, { y: () => 0, label: "", color: "--grid" }] },
+    "c-gap": { min: 0, max: 8, series: [{ get: s => s.gap, color: "--c3", label: "distance (m)" }],
+      bands: [{ from: () => 0, to: () => c.stop_distance, color: "rgba(248,113,113,.18)" }, { from: () => c.stop_distance, to: () => c.detection_distance, color: "rgba(251,191,36,.10)" }],
+      refs: [{ y: () => c.stop_distance, label: "stop distance", color: "--bad" }, { y: () => c.detection_distance, label: "detection range", color: "--warn" }] },
+    "c-pos": { min: -c.geofence - 4, max: c.geofence + 4, series: [{ get: s => s.x, color: "--c1", label: "x" }, { get: s => s.y, color: "--c2", label: "y" }],
+      refs: [{ y: () => c.geofence, label: "geofence", color: "--muted" }, { y: () => -c.geofence, label: "", color: "--muted" }] },
+  };
+}
+
+function render() {
+  if (!S.cfg) return;
+  const lastS = last(S.samples), tNow = S.paused ? S.frozen : (lastS ? lastS.t : 0);
+  const t1 = Math.max(tNow, S.windowSec || 1), t0 = S.windowSec ? t1 - S.windowSec : 0;
+  const chartSpecs = specs();
+  for (const id in chartSpecs) lineChart(id, chartSpecs[id], S.samples, t0, t1);
+  drawMap(S.samples.filter(s => s.t <= tNow), t0, t1);
+  drawStrip(S.samples, S.events, t0, t1);
+
+  if (lastS) {
+    const col = css(stateColour(lastS.label, lastS.mode));
+    $("t-state").textContent = lastS.label; $("t-state").style.color = col;
+    $("t-alt").innerHTML = fmt(lastS.z, 2) + " <small>m</small>";
+    $("t-speed").innerHTML = fmt(Math.hypot(lastS.hs, lastS.vz), 2) + " <small>m/s</small>";
+    $("t-yaw").innerHTML = Math.round(lastS.yaw) + "<small>&deg;</small>";
+    $("t-pos").innerHTML = fmt(lastS.x, 1) + ", " + fmt(lastS.y, 1) + " <small>m</small>";
+    const g = lastS.gap;
+    $("t-gap").innerHTML = g === null ? "none" : g > 8 ? "clear" : fmt(g, 1) + " <small>m</small>";
+    $("t-gap").style.color = g === null || g > 3 ? css("--good") : g > 1 ? css("--warn") : css("--bad");
+  }
+  $("t-cmds").textContent = S.commands;
+  $("log-count").textContent = S.commands ? S.commands + " so far" : "";
+  const live = S.connected;
+  $("dot").className = "dot " + (live ? "live" : S.everConnected ? "off" : "");
+  $("conn").textContent = live ? (S.paused ? "Paused (still recording)" : "Live") : S.everConnected ? "Simulation closed - showing the last data" : "Waiting for the simulation...";
+}
+
+// ---------------------------------------------------------------- data polling
+async function poll() {
+  try {
+    const r = await fetch(`/api/data?s=${S.s}&e=${S.e}`, { cache: "no-store" });
+    const d = await r.json();
+    if (d.s < S.s || d.e < S.e) { S.samples = []; S.events = []; S.commands = 0; $("log").innerHTML = ""; }   // simulation restarted
+    for (const s of d.samples) S.samples.push(s);
+    for (const ev of d.events) { S.events.push(ev); if (ev.kind === "command") S.commands++; addLog(ev); }
+    S.s = d.s; S.e = d.e; S.connected = true; S.everConnected = true;
+    if (S.samples.length > 30000) S.samples.splice(0, S.samples.length - 30000);
+  } catch (err) { S.connected = false; }
+  render();
+}
+
+async function start() {
+  try { S.cfg = await (await fetch("/api/config", { cache: "no-store" })).json(); }
+  catch (err) { $("conn").textContent = "Cannot reach the simulation"; return; }
+  $("subtitle").textContent = "live graphs - " + (S.cfg.scene || "") + " scene, obstacles: " + (S.cfg.obstacle_strategy || "none");
+  legendFor($("strip-legend"), [["parked", "--muted"], ["take-off / landing", "--info"], ["hovering", "--good"], ["moving", "--warn"], ["held at obstacle", "--bad"],
+    ["command", "--c1"], ["not recognised / refused", "--bad"]]);
+  poll(); setInterval(poll, 200);
+}
+
+$("window").addEventListener("change", e => { S.windowSec = Number(e.target.value); render(); });
+$("pause").addEventListener("click", () => {
+  S.paused = !S.paused; if (S.paused) S.frozen = last(S.samples) ? last(S.samples).t : 0;
+  $("pause").textContent = S.paused ? "Resume" : "Pause"; render();
+});
+$("csv").addEventListener("click", () => {
+  const head = "t_s,x_m,y_m,z_m,horizontal_speed_mps,vertical_speed_mps,heading_deg,nearest_obstacle_m,state\n";
+  const rows = S.samples.map(s => [s.t, s.x, s.y, s.z, s.hs, s.vz, s.yaw, s.gap === null ? "" : s.gap, s.label].join(",")).join("\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([head + rows], { type: "text/csv" }));
+  a.download = "drone_session.csv"; a.click(); URL.revokeObjectURL(a.href);
+});
+function setTheme(t) { document.documentElement.dataset.theme = t; store.set("theme", t); render(); }
+$("theme").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"));
+const wanted = new URLSearchParams(location.search).get("theme");          // http://127.0.0.1:8765/?theme=dark
+document.documentElement.dataset.theme = (wanted === "dark" || wanted === "light" ? wanted : null) || store.get("theme") || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+addEventListener("resize", render);
+start();
+</script>
+</body>
+</html>
