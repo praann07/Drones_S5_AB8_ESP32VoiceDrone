@@ -34,6 +34,26 @@ Runs in MuJoCo on a 1:10 scale model of the real campus, built from OpenStreetMa
 
 ---
 
+## Abstract
+
+This project builds a drone that is flown by voice and whose attitude controller is calculated from an equation it learned from its own flight data. A simulated quadrotor in MuJoCo is excited with random and sweep rotor inputs; SINDy (sparse identification of nonlinear dynamics) finds the rotation equations from the recorded data, keeping 44 of 156 candidate coefficients and predicting held-out data with R² = 0.9946. DMDc (dynamic mode decomposition with control), a linear method that is valid near hover only, is the comparison, and SINDy was selected after held-out trials, 11 s rollouts, eigenvalue and noise checks. The inner quaternion attitude loop takes its gains from the learned model; the outer position loop is standard physics by design. A person can say or type "forward", "stop", "land" or "go to the library", and the drone flies there on a 1:10 scale model of the Amrita Coimbatore campus, routing around buildings. It completed 24/24 voice trials, 5/5 chained commands and a 67/67 manoeuvre gauntlet, and brakes to rest in 0.92 s over 0.50 m. The 167 automated tests pass. All results are from simulation; there was no hardware flight.
+
+## Contents
+
+1. [Objective](#1-objective), including tools and background
+2. [System overview](#2-system-overview)
+3. [The pipeline, stage by stage](#3-the-pipeline-stage-by-stage) and how the project evolved
+4. [Method](#4-method)
+5. [The campus world](#5-the-campus-world)
+6. [Results](#6-results), including parameters at a glance
+7. [Honest limits](#7-honest-limits), known issues, and what was left out
+8. [How to run](#8-how-to-run)
+9. [Repository layout](#9-repository-layout)
+10. [Conclusion](#10-conclusion)
+11. [Credits and references](#11-credits-and-references)
+
+---
+
 ## At a glance
 
 | | |
@@ -55,30 +75,34 @@ This project closes that gap. The goal is a **complete, validated chain** from r
 
 **One design decision shapes everything.** Only the **inner attitude loop** is identified from data. Flying in a straight line under a thrust vector is Newton's second law, a plain double integrator with nothing for a data-driven method to discover. Rotation is different: it has drag, cross-axis coupling and quaternion constraints, which is worth learning from data. So the outer position loop is deliberately standard physics (see [`docs/TDD.md`](docs/TDD.md) §7b).
 
+### Tools and background
+
+| Tool | Used for | Why this one |
+|---|---|---|
+| **MuJoCo** | The 6-DOF rigid-body quadrotor at 500 Hz, with IMU sensors | Fast, accurate contact and rigid-body physics; sensors are built in |
+| **SINDy** | Learning the rotation equation from data | Returns a short readable equation (44 of 156 terms kept) that can be linearised for the gain design |
+| **DMDc** | The linear comparison model | The standard linear data-driven method with control inputs; valid near hover only, so it shows what SINDy adds |
+| **Savitzky-Golay filter** | Smoothing before differentiating | Differentiating raw data amplifies noise |
+| **A\* and spline smoothing** | Routing around buildings, then a flyable path | A* is simple, exact on a grid, and easy to test |
+| **Vosk** | Offline speech recognition | Runs without internet; its mistakes are visible in the HEARD LOG |
+| **OpenStreetMap and a satellite photo** | The campus footprints, names and ground | Real outlines and names at no cost |
+
 ---
 
 ## 2. System overview
 
-```
- spoken or typed command   "forward"  "stop"  "land"  "go to Central Library"
-            │
-            ▼  Vosk speech recognition  ->  fuzzy classifier  ->  place matcher
-   command word / target building
-            │
-            ▼  safety: never target the inside of a building, stay inside the map
-   route planner (A* around buildings)  ->  smooth path (cubic spline + quintic Bezier)
-            │
- ┌──────────┴──────────────── OUTER LOOP  (standard physics, not identified) ───────────┐
- │  PD position/velocity control with anti-windup integral                              │
- │  output: desired tilt (quaternion) + thrust                                          │
- └──────────┬───────────────────────────────────────────────────────────────────────────┘
-            ▼
- ┌──────────┴──────────────── INNER LOOP  (built on the SINDy model) ───────────────────┐
- │  quaternion P² attitude law, gains derived from the identified hover linearization   │
- │  yaw-priority mixer: (thrust, torques) -> 4 rotor thrusts                            │
- └──────────┬───────────────────────────────────────────────────────────────────────────┘
-            ▼
-   MuJoCo 6-DOF rigid body, 500 Hz  ──►  IMU sensors  ──►  back to the controller
+```mermaid
+flowchart TD
+    U["Spoken or typed command<br/>'forward', 'stop', 'land', 'go to Central Library'"] --> R["Vosk speech recognition"]
+    R --> F["Fuzzy classifier + place matcher"]
+    F --> SAFE["Safety check<br/>never target the inside of a building, stay inside the map"]
+    SAFE --> RP["Route planner (A* around buildings)"]
+    RP --> SP["Smooth path<br/>(cubic spline + quintic Bezier)"]
+    SP --> OUT["OUTER LOOP (standard physics, not identified)<br/>PD position and velocity control with anti-windup integral<br/>output: desired tilt (quaternion) + thrust"]
+    OUT --> IN["INNER LOOP (built on the SINDy model)<br/>quaternion P² attitude law, gains from the identified hover linearisation<br/>yaw-priority mixer: (thrust, torques) to 4 rotor thrusts"]
+    IN --> SIM["MuJoCo 6-DOF rigid body, 500 Hz"]
+    SIM -->|"IMU sensors"| OUT
+    SIM -->|"IMU sensors"| IN
 ```
 
 Everything runs at **500 Hz** (`dt = 0.002 s`). Frames are ENU world and FLU body, with Hamilton scalar-first quaternions. Units are SI.
@@ -306,6 +330,22 @@ Each of these was a real failure that was measured and then fixed.
 | Scale | 1:10 of the real campus | Keeps flight inside the sensible simulator range |
 | Sensors | Ideal IMU, noise injected only in the robustness study | Honest limit, see section 7 |
 
+### Parameters at a glance
+
+| Parameter | Value | Where |
+|---|---|---|
+| Simulation step | 0.002 s (500 Hz) | `01_simulation/`, `04_control/` |
+| Plant | mass 1.0 kg, arm 0.15 m, hover thrust 2.45 N per rotor, 24 N maximum total thrust | `04_control/mixer.py`, `trajectory.py` |
+| Smoothing | Savitzky-Golay, window 31, order 3 | `02_identification/preprocessing.py` |
+| Gain design | ζ = 0.7, Tₛ = 0.5 s (the only hand-chosen numbers) | `04_control/controller.py` |
+| Maximum bank angle | 30 degrees | `04_control/position_controller.py` |
+| Cruise speed limit | 1.0 m/s | `04_control/trajectory.py` |
+| Sideways acceleration limit in turns | 0.8 m/s² | `04_control/trajectory.py` |
+| Integral gate | engaged only when trajectory and drone are both below 0.15 m/s | `04_control/position_controller.py` |
+| Wall safety margin | 0.3 m | `01_simulation/models/city.py` |
+| Route planner clearance | 0.45 m (hard) | `04_control/route_planner.py` |
+| Minimum height for `down` | 0.3 m (only `land` goes lower) | `05_voice_interface/flight.py` |
+
 ---
 
 ## 7. Honest limits
@@ -465,7 +505,13 @@ More detail: [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md) (code map), [`do
 
 ---
 
-## 10. Credits and references
+## 10. Conclusion
+
+The project closes the gap between identifying a model and flying with it. A rotation equation learned from the drone's own data, checked against a linear alternative, sets the gains of the attitude controller, and that controller flies spoken commands on a map of the real campus: 24/24 voice trials, 5/5 chained, a 67/67 manoeuvre gauntlet, and 167 passing tests. The limits are stated plainly: simulation only, ideal sensors, estimated building heights, and a few open issues listed in section 7. The next steps are a state estimator, obstacle sensing and a hardware flight with the same frozen model.
+
+---
+
+## 11. Credits and references
 
 - **Data and imagery.** Building footprints and names: © OpenStreetMap contributors (ODbL). Ground photo: Imagery © Esri, Maxar, Earthstar Geographics.
 - **Software.** MuJoCo (Google DeepMind), PySINDy, PyDMD, Vosk (Alpha Cephei), NumPy, SciPy, Matplotlib.
