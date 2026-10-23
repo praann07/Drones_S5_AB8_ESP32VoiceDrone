@@ -23,8 +23,7 @@
   <a href="#5-the-campus-world">Campus</a> ·
   <a href="#6-results">Results</a> ·
   <a href="#7-honest-limits">Limits</a> ·
-  <a href="#8-how-to-run">Run it</a> ·
-  <a href="#10-team-and-branches">Team</a>
+  <a href="#8-how-to-run">Run it</a>
 </p>
 
 Runs in MuJoCo on a 1:10 scale model of the real campus, built from OpenStreetMap building outlines and a satellite photo.
@@ -466,30 +465,7 @@ More detail: [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md) (code map), [`do
 
 ---
 
-## 10. Team and branches
-
-B.Tech (AI Engineering), School of Artificial Intelligence, Amrita School of Engineering, Coimbatore, Amrita Vishwa Vidyapeetham.
-
-**Faculty supervisor:** Prof. S. Sunil Kumar (s_sunilkumar@cb.amrita.edu)
-
-| Name | Roll no. |
-|---|---|
-| Mamidala Som Praneeth Babu | CB.SC.U4AIE24029 |
-| C. Karthik | CB.SC.U4AIE24107 |
-| Ch. Virinchi | CB.SC.U4AIE24158 |
-| K. Jatin Chandra Gupta | CB.SC.U4AIE24162 |
-
-| Branch | Contents |
-|---|---|
-| `drone_mujoco` | **This project**: MuJoCo, SINDy-identified attitude loop, voice demo on the campus |
-| `main` | Overview of all four simulation models, with a pipeline and architecture document |
-| `drone_gazebo` | PX4 and Gazebo attempt: voice control, B-spline obstacle avoidance, SINDy data logging |
-| `Drone_pybullet` | PyBullet model: exact moves, safe stopping, live dashboard |
-| `Drones_Matlab` | MATLAB Drone Flight Lab with telemetry analysis |
-
----
-
-## 11. Credits and references
+## 10. Credits and references
 
 - **Data and imagery.** Building footprints and names: © OpenStreetMap contributors (ODbL). Ground photo: Imagery © Esri, Maxar, Earthstar Geographics.
 - **Software.** MuJoCo (Google DeepMind), PySINDy, PyDMD, Vosk (Alpha Cephei), NumPy, SciPy, Matplotlib.
