@@ -1,29 +1,29 @@
-# 🎙️ Voice-Controlled Quadcopter Drone in PyBullet 🚁
+#  Voice-Controlled Quadcopter Drone in PyBullet 
 
 An interactive 3D quadcopter simulation built with **PyBullet** and **SpeechRecognition**. Fly it by voice, fall back to the keyboard at any moment, let it stop itself before it hits anything, watch it all happen in a living city plaza, and get a CSV flight log of everything it did.
 
 ---
 
-## 📌 Features
+##  Features
 
-- **🎙️ Voice control** – a background thread listens to the microphone (Google Web Speech API) and understands natural phrases: *"take off"*, *"go left"*, *"turn to the left"*, *"move forward"*, *"land"*. Whole words are matched, so *"island"* never lands the drone.
-- **⌨️ Keyboard override** – hold keys to steer; release them and the drone hovers. A voice command keeps running while you are not touching the keyboard.
-- **🛑 Stops before obstacles** – the drone looks ahead along its direction of travel, brakes smoothly and holds still at a safe distance in front of any obstacle. The pillar blocking it pulses red, the rear lights flash and the status line turns red. Give it another direction (or *"back"*) to move on. `--on-obstacle steer` makes it fly around obstacles instead. A hard collision stop is the last line of defence.
-- **📏 Measured commands** – say *"forward 3 meters"*, *"up ten feet"* or *"rotate left 90 degrees"* and the drone moves exactly that far (or until an obstacle stops it), then hovers. Plain *"forward"* keeps going until you say *"stop"*.
-- **🏠 Return home** – *"go home"* (or `H`) flies back over the take-off point and lands on the pad (it stops short if an obstacle is in the way).
-- **🚁 Flight modes** – the drone starts on the ground and has to take off; it lands on the ground (not hovering half a metre above it); acceleration is smooth, not teleporting; the drone leans into its direction of travel and the rotors only spin while it is flying.
-- **🌆 A living city plaza** – you fly over a paved plaza with a helipad (yellow ring, green lights), tree planters, benches and lamp posts, surrounded by a ring road with **moving traffic** and crosswalks, pedestrians strolling the sidewalks, and a skyline of textured buildings (taller on the side away from the sun, so none of them shades the plaza). The obstacles are kiosk towers that grow a red halo as the drone nears. Everything is built from PyBullet primitives and generated textures (`scene_assets.py`, `scene_city.py`) - no downloaded assets. `--scene simple` gives a plain floor and pillars for slow machines.
-- **🎨 The drone** – landing skids, a camera gimbal, a GPS puck, red/green/white navigation lights (the white one strobes; the rear lights flash red on an obstacle stop) and translucent rotor discs that appear as the rotors spin up. Sharp sun shadows make height easy to judge.
-- **🎥 Cameras & overlays** – press `C` (or say *"camera"*) to cycle four cameras: **follow** (keeps whatever angle and zoom you set with the mouse), **chase** (behind the drone, turning with it), **top** (straight down, like a mission map) and **fixed**. Labels attached to the drone show its state (red = held at an obstacle, cyan = taking off/landing, green = hovering, yellow = moving), position/speed/heading, the distance to the nearest obstacle and the last phrase heard; `[` and `]` resize them. A marker on the floor under the drone, joined to it by a thin line, shows its height; a sensor ray shows what is ahead (green clear → red close); a flight trail coloured by speed fades behind it (`P`); `Z` draws each obstacle's safety zone.
-- **⚡ Smooth** – in the full city on integrated Intel graphics the simulation loop spends about 3 ms of its 8 ms budget per frame. Every call into the window was measured, and the expensive ones (rewriting text, changing colours) are rationed: see the note in `Hud`.
-- **🧩 One-piece drone model** – `drone.urdf` loads as a single multibody with four counter-rotating propellers, so the whole drone moves in the same instant (no glitching parts).
-- **📊 Telemetry** – every command and one sample per second while airborne are appended to `drone_data.csv`.
+- ** Voice control** – a background thread listens to the microphone (Google Web Speech API) and understands natural phrases: *"take off"*, *"go left"*, *"turn to the left"*, *"move forward"*, *"land"*. Whole words are matched, so *"island"* never lands the drone.
+- **Keyboard override** – hold keys to steer; release them and the drone hovers. A voice command keeps running while you are not touching the keyboard.
+- ** Stops before obstacles** – the drone looks ahead along its direction of travel, brakes smoothly and holds still at a safe distance in front of any obstacle. The pillar blocking it pulses red, the rear lights flash and the status line turns red. Give it another direction (or *"back"*) to move on. `--on-obstacle steer` makes it fly around obstacles instead. A hard collision stop is the last line of defence.
+- ** Measured commands** – say *"forward 3 meters"*, *"up ten feet"* or *"rotate left 90 degrees"* and the drone moves exactly that far (or until an obstacle stops it), then hovers. Plain *"forward"* keeps going until you say *"stop"*.
+- ** Return home** – *"go home"* (or `H`) flies back over the take-off point and lands on the pad (it stops short if an obstacle is in the way).
+- ** Flight modes** – the drone starts on the ground and has to take off; it lands on the ground (not hovering half a metre above it); acceleration is smooth, not teleporting; the drone leans into its direction of travel and the rotors only spin while it is flying.
+- ** A living city plaza** – you fly over a paved plaza with a helipad (yellow ring, green lights), tree planters, benches and lamp posts, surrounded by a ring road with **moving traffic** and crosswalks, pedestrians strolling the sidewalks, and a skyline of textured buildings (taller on the side away from the sun, so none of them shades the plaza). The obstacles are kiosk towers that grow a red halo as the drone nears. Everything is built from PyBullet primitives and generated textures (`scene_assets.py`, `scene_city.py`) - no downloaded assets. `--scene simple` gives a plain floor and pillars for slow machines.
+- ** The drone** – landing skids, a camera gimbal, a GPS puck, red/green/white navigation lights (the white one strobes; the rear lights flash red on an obstacle stop) and translucent rotor discs that appear as the rotors spin up. Sharp sun shadows make height easy to judge.
+- ** Cameras & overlays** – press `C` (or say *"camera"*) to cycle four cameras: **follow** (keeps whatever angle and zoom you set with the mouse), **chase** (behind the drone, turning with it), **top** (straight down, like a mission map) and **fixed**. Labels attached to the drone show its state (red = held at an obstacle, cyan = taking off/landing, green = hovering, yellow = moving), position/speed/heading, the distance to the nearest obstacle and the last phrase heard; `[` and `]` resize them. A marker on the floor under the drone, joined to it by a thin line, shows its height; a sensor ray shows what is ahead (green clear → red close); a flight trail coloured by speed fades behind it (`P`); `Z` draws each obstacle's safety zone.
+- ** Smooth** – in the full city on integrated Intel graphics the simulation loop spends about 3 ms of its 8 ms budget per frame. Every call into the window was measured, and the expensive ones (rewriting text, changing colours) are rationed: see the note in `Hud`.
+- ** One-piece drone model** – `drone.urdf` loads as a single multibody with four counter-rotating propellers, so the whole drone moves in the same instant (no glitching parts).
+- ** Telemetry** – every command and one sample per second while airborne are appended to `drone_data.csv`.
 
 > The motion model is kinematic (commanded velocities, not simulated rotor thrust). PyBullet provides the 3D world, rendering and camera.
 
 ---
 
-## 📸 Screenshots
+##  Screenshots
 
 | City plaza overview | Held in front of an obstacle (the tower glows) |
 | :---: | :---: |
@@ -37,7 +37,7 @@ The screenshots of the first version are in `legacy/old_screenshots/`.
 
 ---
 
-## 📂 Project Structure
+##  Project Structure
 
 ```text
 pybullet_voice_drone/
@@ -61,7 +61,7 @@ The three launchers only differ in their defaults – all of them accept the sam
 
 ---
 
-## ⚙️ Prerequisites
+##  Prerequisites
 
 - **Python 3.9 – 3.12**
 - **Microphone + internet** for voice control (not needed for keyboard mode or `--console`)
@@ -69,7 +69,7 @@ The three launchers only differ in their defaults – all of them accept the sam
 
 ---
 
-## 🚀 Installation
+##  Installation
 
 ```bash
 git clone --branch Drone_pybullet --single-branch https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone.git
@@ -98,7 +98,7 @@ pip install -r requirements.txt
 
 ---
 
-## 🎮 How to Run
+##  How to Run
 
 | Command | Voice | Obstacles |
 | :--- | :---: | :---: |
@@ -128,7 +128,7 @@ The drone **starts on the ground**: say *"take off"* (or press `T`) first.
 
 ---
 
-## 🗣️ Voice Commands
+##  Voice Commands
 
 Speak (or type with `--console`) one command at a time. Several wordings work for each:
 
@@ -174,7 +174,7 @@ While the drone is on the ground only *take off* and *up* are accepted.
 
 ---
 
-## ⌨️ Keyboard Controls
+##  Keyboard Controls
 
 Click the PyBullet window first. PyBullet's own debug shortcuts (W = wireframe, A, C, G …) are switched off so they don't interfere.
 
@@ -199,7 +199,7 @@ Keys can be combined (e.g. `W`+`D` flies diagonally).
 
 ---
 
-## 🛑 Obstacle Handling
+##  Obstacle Handling
 
 Every frame the drone casts a ray along its commanded direction of travel (so it works for *backward*, *left/right* and *down* too) and tests it against each obstacle grown by the drone's footprint (propeller-tip radius 1.32 m, plus the skids' height) and a 0.25 m **safety distance** – the *safety zone*, drawn with `Z`. It looks up to `DETECTION_DISTANCE = 2 m` ahead.
 
@@ -220,7 +220,7 @@ The three demo obstacles are defined by `DEFAULT_OBSTACLES` in `drone_core.py`; 
 
 ---
 
-## 📊 Telemetry
+##  Telemetry
 
 `drone_data.csv` is appended to on every run (header written only once): one row per command, plus one per second while airborne. Velocities are world-frame m/s, positions metres, yaw degrees.
 
@@ -236,7 +236,7 @@ Time,Voice_Input,Command,Velocity_X,Velocity_Y,Velocity_Z,Drone_X,Drone_Y,Drone_
 
 ---
 
-## 🧪 Tests
+##  Tests
 
 The tests run headless – no window, microphone or internet:
 
@@ -248,7 +248,7 @@ They cover the command parser (including distances and angles), flight modes, me
 
 ---
 
-## 📤 Working in the team repository
+##  Working in the team repository
 
 This folder lives on the `Drone_pybullet` branch of the team repository. Commit and push to that branch only:
 
@@ -261,6 +261,6 @@ git push origin HEAD:refs/heads/Drone_pybullet
 
 ---
 
-## 📜 License
+##  License
 
 No license file is included yet. Add a `LICENSE` file (for example MIT) before publishing if you want others to be able to reuse the code.
