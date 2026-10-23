@@ -382,8 +382,8 @@ PyBullet GUI window            ← draws everything (shadows, textures, labels)
 Drones_S5_AB8_ESP32VoiceDrone/
 │
 ├── README.md                        # this file
-├── README_ESP32_SIMULATOR.md        # documentation of the original ESP32 simulator (main branch)
-├── drone_sim/                       # code of the original simulator (from main)
+├── README_ESP32_SIMULATOR.md        # documentation of the original ESP32 simulator (kept on branch drone_esp32_sim)
+├── drone_sim/                       # code of the original simulator (a copy; the original is on branch drone_esp32_sim)
 │
 └── pybullet_voice_drone/            # this branch's project
     ├── drone_core.py                # parser, flight model, obstacle logic, drone model, cameras, HUD, voice, telemetry, main loop
@@ -624,7 +624,7 @@ Listed so that nobody assumes these exist.
 - **A screen-fixed on-screen display.** PyBullet can only draw text at a 3D position, and re-pinning text to the screen every frame costs several milliseconds while the scene moves ([Section 4.8](#48-keeping-it-smooth-measuring-the-gui)). The labels are attached to the drone instead.
 - **A smooth fade of the rotor discs.** Every colour change is a call into the window, so the discs use three opacity levels.
 - **Sensing and mapping.** The drone knows the exact positions of the obstacles. There is no sensor model, no map building and there are no moving obstacles.
-- **Offline speech recognition.** Speech goes to Google's service, so it needs internet and sends whatever the microphone hears. The `main` branch uses an offline recogniser (Vosk) for the ESP32 simulator.
+- **Offline speech recognition.** Speech goes to Google's service, so it needs internet and sends whatever the microphone hears. The `drone_esp32_sim` branch (the original ESP32 simulator) uses an offline recogniser (Vosk).
 - **Commands from the graphs page.** The dashboard only shows data, on purpose. It accepts no commands.
 - **Named waypoints, stored missions and failsafes.** Planned ([Section 19](#19-future-work)), not built.
 - **Hardware.** Everything is simulation. No real drone flew.
@@ -672,6 +672,7 @@ The project shows that a voice interface for a drone depends as much on forgivin
 
 The repository holds several attempts at the same voice-controlled drone, each on its own branch:
 
-- **[`main`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/main)** is the original ESP32-based attempt. Its documentation (Vosk voice parsing, cascaded PID control, GPS waypoints, SINDy/DMDc analysis) is kept in this branch as [`README_ESP32_SIMULATOR.md`](README_ESP32_SIMULATOR.md), and its code is in [`drone_sim/`](drone_sim/).
+- **[`drone_esp32_sim`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_esp32_sim)** is the original ESP32-based attempt, moved there from `main`. Its documentation (Vosk voice parsing, cascaded PID control, GPS waypoints, SINDy/DMDc analysis) is kept in this branch as [`README_ESP32_SIMULATOR.md`](README_ESP32_SIMULATOR.md), and its code is in [`drone_sim/`](drone_sim/). [`main`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/main) now holds only the overview README of all the models.
 - **[`drone_mujoco`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_mujoco)** is a MuJoCo-based voice-controlled quadrotor with a SINDy-identified data-driven attitude controller (full pipeline: excitation → identification → validation → cascaded control → live voice demo).
 - **[`drone_gazebo`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_gazebo)** is a PX4 + Gazebo voice-controlled quadrotor, also using SINDy/DMDc identification.
+- **[`Drones_Matlab`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/Drones_Matlab)** is a MATLAB Drone Flight Lab: a command interface with voice input, an obstacle stop and telemetry analysis in a 3D city.
