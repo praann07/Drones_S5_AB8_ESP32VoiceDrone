@@ -116,6 +116,7 @@ PX4 already logs a complete, high-rate internal record of every flight to a `.ul
 - Open-loop simulation of a discovered model (feeding it real recorded control inputs with no feedback correction) will diverge from the true trajectory over time even for a good model, since small per-step errors compound with nothing to correct them -- this is a property of open-loop testing, not necessarily evidence the identified model is bad.
 
 ---
+<img width="959" height="599" alt="Screenshot 2026-09-28 213142" src="https://github.com/user-attachments/assets/7b8d3a7d-1bd8-48a5-a36e-58da4434c62e" />
 
 ## 6. Quick Reference -- Running It
 
