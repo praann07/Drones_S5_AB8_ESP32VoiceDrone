@@ -546,7 +546,7 @@ Say **"take off"**, **"point library"**, **"fly to library"** and a simulated qu
 
 Everything runs in simulation: **PX4 SITL + Gazebo (x500 quadcopter)** on the ETH Zurich Irchel map, **QGroundControl** as the ground station, and **Python + MAVSDK** for our own code. PX4 does all low-level flight control. Our work is the layer above it: voice commands, path planning, data logging and model fitting.
 
-<a href="https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_gazebo" target="_blank">Click here to open my branch</a>
+[Click here to open my branch ↗](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_gazebo)
 
 > This README describes what we built, how to run it, what we tried and dropped, and what is still broken. The "Known issues" and "Left out" sections are there on purpose so nobody repeats our mistakes.
 
