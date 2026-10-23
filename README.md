@@ -1345,3 +1345,9 @@ Do not create empty arrays merely to silence an undefined-variable error: the gr
 | Drone stops near an obstacle | Safety check may have flagged the protected region | Inspect obstacle geometry and the configured safety margin; do not assume the stop is a bug without checking. |
 
 **Main reference:** the submitted MATLAB source and its associated helper files. Any implementation-specific behaviour, numerical results, or safety claims should be confirmed against those files and measured simulation output.
+
+---
+
+## Earlier work
+
+The project started as an ESP32/LiteWing-style Python simulator with a keyword voice parser and SINDy/DMDc analysis of its own flight data. It was replaced by the four models above and is kept, unmaintained, on the branch [`drone_esp32_sim`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_esp32_sim). Its README lists the known issues.
