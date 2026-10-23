@@ -312,10 +312,10 @@ This branch treats the **command and safety layer** as the product. The flight m
 | Algorithm | Equation or rule | Details |
 |---|---|---|
 | Spelling repair | $r(a,b) = \dfrac{2M}{\lvert a\rvert + \lvert b\rvert}$, repair a word of ≥ 5 letters if $r \ge 0.85$ | [10.2](#102-command-matching) |
-| Kinematic flight model | $v \leftarrow v + \mathrm{clip}(v_{want} - v,\ \pm a\,\Delta t)$, $\ p \leftarrow p + v\,\Delta t$ | [10.3](#103-flight-models) |
+| Kinematic flight model | $v \leftarrow v + \mathrm{clip}(v_{want} - v,\ \pm a \Delta t)$, $\ p \leftarrow p + v \Delta t$ | [10.3](#103-flight-models) |
 | Measured move | speed $= \mathrm{clip}(2r,\ 0.15,\ v_{max})$, finished when $r \le 0.02$ m | [10.3](#103-flight-models) |
 | Ray against a box | slab method: $t_{near} = \max_i \min(t_{1i}, t_{2i})$, $t_{far} = \min_i \max(t_{1i}, t_{2i})$ | [10.4](#104-obstacle-detection-and-braking) |
-| Braking law | $v_{allowed} = \sqrt{2\,a_b\,(t_{hit} - d_{stop})}$, $a_b = 2$ m/s², $d_{stop} = 0.4$ m | [10.4](#104-obstacle-detection-and-braking) |
+| Braking law | $v_{allowed} = \sqrt{2 a_b (t_{hit} - d_{stop})}$, $a_b = 2$ m/s², $d_{stop} = 0.4$ m | [10.4](#104-obstacle-detection-and-braking) |
 
 #### Tools
 
@@ -363,7 +363,7 @@ Independent. It does not use code from any other branch. Because it was branched
 
 A controller is only as good as the model it is designed on. Textbook parameters (mass, inertia, drag) are never exactly right, so this branch **learns the rotational dynamics from the drone's own flight data**, checks that model hard, and **computes the attitude controller from it**. A voice interface and a campus map sit on top, so a spoken "go to the central library" ends with the drone landing next to that building.
 
-One design decision shapes the branch: only the **inner attitude loop** is identified from data. Translation under a thrust vector is Newton's second law, $m\ddot{p} = R(q)\,[0,0,T]^\top - mg\,\hat{z}$, a double integrator with nothing to discover, so the outer position loop is standard physics by design.
+One design decision shapes the branch: only the **inner attitude loop** is identified from data. Translation under a thrust vector is Newton's second law, $m\ddot{p} = R(q) [0,0,T]^\top - mg \hat{z}$, a double integrator with nothing to discover, so the outer position loop is standard physics by design.
 
 #### Features
 
@@ -421,10 +421,10 @@ flowchart TD
 
 | Algorithm | Equation or rule | Details |
 |---|---|---|
-| SINDy with STLSQ | $\dot X \approx \Theta(X,U)\,\Xi$; repeat: least squares, then zero every $\lvert\Xi_{ij}\rvert < \lambda$ | [10.6](#106-sindy) |
-| DMDc | $x_{k+1} = A x_k + B u_k$, $[A\ B] = X'\,[X;\,U]^{\dagger}$ | [10.7](#107-dmdc) |
-| Gains from the model | per axis $\dot\omega = a\,\omega + b\,\tau$; $\omega_n = \dfrac{4}{\zeta T_s}$, $K_q = \dfrac{2\omega_n^2}{b}$, $K_\omega = \dfrac{2\zeta\omega_n + a}{b}$, with $\zeta = 0.7$, $T_s = 0.5$ s | [10.8](#108-cascaded-control) |
-| Quaternion attitude law | $q_e = q_{ref} \otimes q^{*}$, $\ \tau = -K_q\,\mathrm{sign}(q_{e,w})\,q_{e,vec} - K_\omega(\omega - \omega_{des})$ | [10.8](#108-cascaded-control) |
+| SINDy with STLSQ | $\dot X \approx \Theta(X,U) \Xi$; repeat: least squares, then zero every $\lvert\Xi_{ij}\rvert < \lambda$ | [10.6](#106-sindy) |
+| DMDc | $x_{k+1} = A x_k + B u_k$, $[A\ B] = X' [X; U]^{\dagger}$ | [10.7](#107-dmdc) |
+| Gains from the model | per axis $\dot\omega = a \omega + b \tau$; $\omega_n = \dfrac{4}{\zeta T_s}$, $K_q = \dfrac{2\omega_n^2}{b}$, $K_\omega = \dfrac{2\zeta\omega_n + a}{b}$, with $\zeta = 0.7$, $T_s = 0.5$ s | [10.8](#108-cascaded-control) |
+| Quaternion attitude law | $q_e = q_{ref} \otimes q^{*}$, $\ \tau = -K_q \mathrm{sign}(q_{e,w}) q_{e,vec} - K_\omega(\omega - \omega_{des})$ | [10.8](#108-cascaded-control) |
 | A\* on an occupancy grid | $f(n) = g(n) + h(n)$, 0.25 m cells, wall-distance penalty, 0.45 m hard clearance | [10.9](#109-path-planning) |
 | Stopping distance | $d = v^2 / (2a_{max})$: from 1.0 m/s at 1.0 m/s² this is 0.50 m, as measured | [10.4](#104-obstacle-detection-and-braking) |
 
@@ -523,7 +523,7 @@ flowchart LR
 | Local frame from GPS | $x = (\lambda - \lambda_0)\cdot 111320\cos\phi_0$, $\ y = (\phi - \phi_0)\cdot 111320$ (metres east and north of home) | [10.9](#109-path-planning) |
 | Inflated buildings | point $(x,y)$ collides if $x_{min} - m \le x \le x_{max} + m$ and $y_{min} - m \le y \le y_{max} + m$, $m = 5$ m | [10.9](#109-path-planning) |
 | A\* (in `path_planner_v3.py`) | 1 m grid, 8 neighbours (cost 1 or 1.414), no corner cutting, then line-of-sight pruning | [10.9](#109-path-planning) |
-| Cubic B-spline | $C(u) = \sum_i N_{i,3}(u)\,P_i$ via SciPy `splprep(s=0, k=3)`; sampled at 400 points and checked, margin grown by 2 m on failure | [10.9](#109-path-planning) |
+| Cubic B-spline | $C(u) = \sum_i N_{i,3}(u) P_i$ via SciPy `splprep(s=0, k=3)`; sampled at 400 points and checked, margin grown by 2 m on failure | [10.9](#109-path-planning) |
 | SINDy | degree-1 polynomial library on roll, pitch, p, q; STLSQ threshold 0.2; first 70 % of the log to train, last 30 % to test | [10.6](#106-sindy) |
 
 #### Tools
@@ -602,7 +602,7 @@ flowchart TD
     STOP --> LOG
 ```
 
-- **Model:** a simplified quadrotor, not a rotor-thrust simulation. The position loop commands an acceleration, $a_{cmd,xy} = 1.55\,e_{xy} - 1.75\,v_{xy}$ and $a_{cmd,z} = 2.35\,e_z - 2.0\,v_z$, limited by the tilt limit. The commanded tilt is $\theta_{cmd} = -\operatorname{atan2}(a_x, g)$, $\phi_{cmd} = \operatorname{atan2}(a_y, g)$; the attitude follows with a rate limit (75°/s in roll and pitch, 100°/s in yaw). The horizontal acceleration then comes from the actual tilt, $a_x = -g\tan\theta$, $a_y = g\tan\phi$, plus wind and a quadratic drag term $-0.055\,v\lvert v\rvert$.
+- **Model:** a simplified quadrotor, not a rotor-thrust simulation. The position loop commands an acceleration, $a_{cmd,xy} = 1.55 e_{xy} - 1.75 v_{xy}$ and $a_{cmd,z} = 2.35 e_z - 2.0 v_z$, limited by the tilt limit. The commanded tilt is $\theta_{cmd} = -\operatorname{atan2}(a_x, g)$, $\phi_{cmd} = \operatorname{atan2}(a_y, g)$; the attitude follows with a rate limit (75°/s in roll and pitch, 100°/s in yaw). The horizontal acceleration then comes from the actual tilt, $a_x = -g\tan\theta$, $a_y = g\tan\phi$, plus wind and a quadratic drag term $-0.055 v\lvert v\rvert$.
 - **Obstacle rule:** for each step, the closest point of the segment from the current to the next position is found; if it comes within the safety radius (obstacle radius + 1.65 m) of a barrier, or of a building's bounding circle, the step is refused. Movement that increases the distance from an obstacle is always allowed.
 - **Motor bars** are a visual proxy for control effort, computed from the commands; they are not a motor model.
 
@@ -619,9 +619,9 @@ flowchart TD
 
 | Algorithm | Equation or rule | Details |
 |---|---|---|
-| Cascaded PD to acceleration | $a_{cmd} = K_p\,e - K_d\,v$, clipped to $g\tan\theta_{max}$ | [10.8](#108-cascaded-control) |
+| Cascaded PD to acceleration | $a_{cmd} = K_p e - K_d v$, clipped to $g\tan\theta_{max}$ | [10.8](#108-cascaded-control) |
 | Tilt and acceleration | $\theta_{cmd} = -\operatorname{atan2}(a_x, g)$; $a_x = -g\tan\theta$ | [10.3](#103-flight-models) |
-| Segment-to-circle stop | closest point $p + \tau s$, $\tau = \mathrm{clip}\!\left(\dfrac{(c - p)\cdot s}{s\cdot s},\,0,\,1\right)$; stop if within $r + 1.65$ m | [10.4](#104-obstacle-detection-and-braking) |
+| Segment-to-circle stop | closest point $p + \tau s$, $\tau = \mathrm{clip}\left(\dfrac{(c - p)\cdot s}{s\cdot s}, 0, 1\right)$; stop if within $r + 1.65$ m | [10.4](#104-obstacle-detection-and-braking) |
 | Tracking error | $e_{3D} = \lVert p_{target} - p\rVert$, $\ \mathrm{RMSE} = \sqrt{\tfrac{1}{N}\sum e_{3D}^2}$ | [Section 14](#14-results-and-demonstrations) |
 
 #### Tools
@@ -720,7 +720,9 @@ In `Drone_pybullet` one thread only records while a second thread transcribes, s
 
 **How.** The fuzzy branches use the similarity ratio of Python's `difflib`:
 
-$$r(a,b) = \frac{2M}{\lvert a\rvert + \lvert b\rvert}$$
+```math
+r(a,b) = \frac{2M}{\lvert a\rvert + \lvert b\rvert}
+```
 
 where $M$ is the number of characters in matching blocks and $\lvert a\rvert$, $\lvert b\rvert$ are the lengths of the two words. "forwad" against "forward" gives $M = 6$, total length 13, $r = 0.923$.
 
@@ -754,9 +756,9 @@ return not recognised                           # nothing is guessed
 | Branch | Model | Equations |
 |---|---|---|
 | `Drone_pybullet` | Kinematic, per axis | $v \leftarrow v + \mathrm{clip}(v_{want} - v,\ -a\Delta t,\ a\Delta t)$, $\ p \leftarrow p + v\Delta t$, with $a = 3$ m/s²; wanted velocity rotated from the body frame by the heading $\psi$: $v_x = f\cos\psi - l\sin\psi$, $v_y = f\sin\psi + l\cos\psi$ |
-| `drone_mujoco` | Full 6-DOF rigid body in MuJoCo | $m\ddot p = R(q)[0,0,T]^\top - mg\hat z$; $\ I\dot\omega = M u - \omega \times (I\omega) - c\,\omega$ |
+| `drone_mujoco` | Full 6-DOF rigid body in MuJoCo | $m\ddot p = R(q)[0,0,T]^\top - mg\hat z$; $\ I\dot\omega = M u - \omega \times (I\omega) - c \omega$ |
 | `drone_gazebo` | PX4 SITL with the Gazebo x500 model | Provided by Gazebo and PX4 |
-| `Drones_Matlab` | Simplified: acceleration follows tilt | $a_x = -g\tan\theta$, $a_y = g\tan\phi$, plus wind and $-0.055\,v\lvert v\rvert$ drag |
+| `Drones_Matlab` | Simplified: acceleration follows tilt | $a_x = -g\tan\theta$, $a_y = g\tan\phi$, plus wind and $-0.055 v\lvert v\rvert$ drag |
 | `drone_esp32_sim` | Euler-angle 6-DOF | $\dot\phi = p + q\sin\phi\tan\theta + r\cos\phi\tan\theta$, $\dot\theta = q\cos\phi - r\sin\phi$, $\dot\psi = (q\sin\phi + r\cos\phi)/\cos\theta$; $\alpha = \tau/I$ |
 
 A **measured move** in `Drone_pybullet` stores the remaining distance $r$ and flies at $\mathrm{clip}(2r,\ 0.15,\ v_{max})$, so once the speed fades $\dot r = -2r$: the remaining distance shrinks exponentially with a 0.5 s time constant and the move ends when $r \le 0.02$ m.
@@ -774,7 +776,9 @@ A **measured move** in `Drone_pybullet` stores the remaining distance $r$ and fl
 - **Ray test, slab method:** a ray from the drone along its direction of travel $d$ is tested against every zone. Per axis, $t_1 = (a - o)/d$, $t_2 = (b - o)/d$; the ray enters at $t_{near} = \max_i \min(t_{1i}, t_{2i})$ and leaves at $t_{far} = \min_i \max(t_{1i}, t_{2i})$. It hits if $t_{near} < t_{far}$ and $t_{near}$ is within the 2 m detection range.
 - **Braking law:** stopping from speed $v$ at deceleration $a_b$ takes $v^2/(2a_b)$. To stop $d_{stop} = 0.4$ m before the zone, the largest allowed speed is
 
-$$v_{allowed} = \sqrt{2\,a_b\,(t_{hit} - d_{stop})}, \qquad a_b = 2\ \text{m/s}^2 < a = 3\ \text{m/s}^2$$
+```math
+v_{allowed} = \sqrt{2\,a_b\,(t_{hit} - d_{stop})}, \qquad a_b = 2\ \text{m/s}^2 < a = 3\ \text{m/s}^2
+```
 
 so the planned stop is always achievable. Below 0.1 m/s the drone is held and its command is dropped.
 
@@ -791,7 +795,7 @@ every frame:
 
 Worked check: the first tower's face is at x = 2.8 m, its zone face at 2.8 − 1.57 = 1.23 m, so the drone should stop at 1.23 − 0.40 = 0.83 m. The measured stop position is 0.83 m.
 
-- **Segment-to-circle rule** (`Drones_Matlab`): for a step from $p$ to $p + s$, the closest point to an obstacle centre $c$ is $p + \tau s$ with $\tau = \mathrm{clip}\big((c - p)\cdot s / (s\cdot s),\,0,\,1\big)$; the step is refused if that point is within the obstacle radius + 1.65 m.
+- **Segment-to-circle rule** (`Drones_Matlab`): for a step from $p$ to $p + s$, the closest point to an obstacle centre $c$ is $p + \tau s$ with $\tau = \mathrm{clip}\big((c - p)\cdot s / (s\cdot s), 0, 1\big)$; the step is refused if that point is within the obstacle radius + 1.65 m.
 - **Stopping on command** (`drone_mujoco`): "stop" plans a braking trajectory at the planner's 1.0 m/s² limit, so from 1.0 m/s the drone rests after $1.0^2/(2\cdot 1.0) = 0.5$ m.
 
 **Why.** A recognised command is only a request. Planning the stop from the braking distance, instead of reacting at contact, lets the drone slow down exactly when it must and never enter the zone.
@@ -812,7 +816,9 @@ Worked check: the first tower's face is at x = 2.8 m, its zone face at 2.8 − 1
 
 **How.** Stack the measured derivatives $\dot X$ (one row per sample) and evaluate a library $\Theta(X, U)$ of candidate terms at every sample; then solve
 
-$$\dot X \approx \Theta(X, U)\,\Xi$$
+```math
+\dot X \approx \Theta(X, U)\,\Xi
+```
 
 for a sparse coefficient matrix $\Xi$ with sequentially thresholded least squares (STLSQ):
 
@@ -836,7 +842,9 @@ Used in: `drone_mujoco/02_identification/sindy_fit.py` (for control), `drone_gaz
 
 **How.** With $X = [x_0 \dots x_{N-1}]$, $X' = [x_1 \dots x_N]$ and $U = [u_0 \dots u_{N-1}]$, the least-squares solution is
 
-$$[A\ \ B] = X'\begin{bmatrix} X \\ U \end{bmatrix}^{\dagger}$$
+```math
+[A\ \ B] = X'\begin{bmatrix} X \\ U \end{bmatrix}^{\dagger}
+```
 
 computed with a (truncated) singular value decomposition. The eigenvalues of $A$ give stability: $\lvert z\rvert < 1$ is stable in discrete time, and $s = \ln z / \Delta t$ gives the continuous-time poles.
 
@@ -849,15 +857,19 @@ computed with a (truncated) singular value decomposition. The eigenvalues of $A$
 
 **How.**
 
-- **PID** (`drone_esp32_sim`): $u = K_p e + K_i \int e\,dt + K_d\,\dot e$; position P → velocity → tilt → attitude P → rate P → mixer; altitude has its own PID.
+- **PID** (`drone_esp32_sim`): $u = K_p e + K_i \int e dt + K_d \dot e$; position P → velocity → tilt → attitude P → rate P → mixer; altitude has its own PID.
 - **PD to acceleration** (`Drones_Matlab`, and the outer loop of `drone_mujoco`): $a_{cmd} = K_p e_p + K_d e_v\ (+ K_i \int e_p)$; the thrust vector is $m(a_{cmd} + g\hat z)$, its length is the thrust and its direction the desired tilt. In `drone_mujoco` the integral acts only when the drone and the trajectory are nearly at rest (below 0.15 m/s), which removes steady offsets without adding lag during a move.
 - **Quaternion attitude law** (`drone_mujoco/04_control/controller.py`): the error quaternion $q_e = q_{ref} \otimes q^{*}$ has a vector part of about half the angle error, and
 
-$$\tau = -K_q\,\mathrm{sign}(q_{e,w})\,q_{e,vec} - K_\omega(\omega - \omega_{des})$$
+```math
+\tau = -K_q\,\mathrm{sign}(q_{e,w})\,q_{e,vec} - K_\omega(\omega - \omega_{des})
+```
 
-- **Gains from the identified model:** near hover each axis of the SINDy model reads $\dot\omega = a\,\omega + b\,\tau$ ($a < 0$ is $-$drag/inertia, $b$ is 1/inertia). With $\tau = -K_p e - K_d \dot e$ the closed loop is $\ddot e + (bK_d - a)\dot e + bK_p e = 0$; matching $s^2 + 2\zeta\omega_n s + \omega_n^2$ and converting to the quaternion convention ($K_q = 2K_p$) gives
+- **Gains from the identified model:** near hover each axis of the SINDy model reads $\dot\omega = a \omega + b \tau$ ($a < 0$ is $-$drag/inertia, $b$ is 1/inertia). With $\tau = -K_p e - K_d \dot e$ the closed loop is $\ddot e + (bK_d - a)\dot e + bK_p e = 0$; matching $s^2 + 2\zeta\omega_n s + \omega_n^2$ and converting to the quaternion convention ($K_q = 2K_p$) gives
 
-$$\omega_n = \frac{4}{\zeta T_s}, \qquad K_q = \frac{2\omega_n^2}{b}, \qquad K_\omega = \frac{2\zeta\omega_n + a}{b}$$
+```math
+\omega_n = \frac{4}{\zeta T_s}, \qquad K_q = \frac{2\omega_n^2}{b}, \qquad K_\omega = \frac{2\zeta\omega_n + a}{b}
+```
 
 with only $\zeta = 0.7$ and $T_s = 0.5$ s chosen by hand (`gains_from_identified_model()`).
 - **Mixer** (`drone_mujoco/04_control/mixer.py`): inverts the X-configuration geometry, $[T,\tau_x,\tau_y,\tau_z]^\top = M f$; when a rotor would leave 0 to 6 N, yaw torque is reduced first, because yaw costs about five times more rotor headroom than roll or pitch.
@@ -871,7 +883,7 @@ with only $\zeta = 0.7$ and $T_s = 0.5$ s chosen by hand (`gains_from_identified
 
 **How.**
 
-- **Local frame** (`drone_gazebo`): GPS to metres east and north of home, $x = (\lambda - \lambda_0)\,111320\cos\phi_0$, $y = (\phi - \phi_0)\,111320$.
+- **Local frame** (`drone_gazebo`): GPS to metres east and north of home, $x = (\lambda - \lambda_0) 111320\cos\phi_0$, $y = (\phi - \phi_0) 111320$.
 - **A\*** (`drone_mujoco/04_control/route_planner.py`, `drone_gazebo/.../path_planner_v3.py`): search a grid of free cells by the smallest $f(n) = g(n) + h(n)$, where $g$ is the cost so far and $h$ the straight-line distance to the goal; because $h$ never overestimates, the first path found to the goal is the shortest on the grid.
 
 ```text
@@ -884,7 +896,7 @@ while open is not empty:
 ```
 
    MuJoCo uses 0.25 m cells, forbids cells closer than 0.45 m to a wall and adds a penalty near walls, so routes keep to the middle of open space; buildings lower than the flight altitude can be flown over. The Gazebo v3 planner uses 1 m cells around buildings inflated by 5 m and keeps only the corners where line of sight is lost.
-- **Cubic B-spline** (`drone_gazebo`): $C(u) = \sum_i N_{i,3}(u)\,P_i$ through the route points (SciPy `splprep`, `s=0`, `k=3`), giving continuous position, direction and curvature; the curve is sampled and checked against the buildings.
+- **Cubic B-spline** (`drone_gazebo`): $C(u) = \sum_i N_{i,3}(u) P_i$ through the route points (SciPy `splprep`, `s=0`, `k=3`), giving continuous position, direction and curvature; the curve is sampled and checked against the buildings.
 - **Quintic Bézier** (`drone_mujoco/04_control/trajectory.py`): a degree-5 curve per leg whose position, velocity and acceleration match at the joins, so chained commands flow into each other; turns slow down to keep the sideways acceleration below 0.8 m/s².
 
 **Why.** A straight line to a building flies through other buildings; A\* finds a route around them, and smoothing removes the stop-and-turn corners that a multirotor cannot follow at speed.
@@ -1042,7 +1054,7 @@ Evidence in the repository: [`Drone_pybullet` test output](https://github.com/pr
 | Item | Result |
 |---|---|
 | Recording | `flight_data.csv`: 47,035 rows (re-counted), median step 0.0208 s (about 48 Hz), about 17 minutes |
-| SINDy, attitude (degree 1, λ = 0.2, last 30 % held out) | $\dot\phi = 1.015\,p$, $\dot\theta = 0.997\,q$, $\dot p = -4.039\,\phi$, $\dot q = 0.676\,\phi - 2.734\,\theta + 0.227\,p$; held-out one-step R² 0.964 (roll), 0.974 (pitch), 0.26 (p), 0.27 (q) |
+| SINDy, attitude (degree 1, λ = 0.2, last 30 % held out) | $\dot\phi = 1.015 p$, $\dot\theta = 0.997 q$, $\dot p = -4.039 \phi$, $\dot q = 0.676 \phi - 2.734 \theta + 0.227 p$; held-out one-step R² 0.964 (roll), 0.974 (pitch), 0.26 (p), 0.27 (q) |
 | Reading | The kinematic relations (angle rate = body rate) are recovered; the rate equations explain about a quarter of the angular acceleration, because motor commands were not logged and PX4's controller was in the loop |
 | Planner check (offline) | All 35 mission points outside every building on two layouts |
 
