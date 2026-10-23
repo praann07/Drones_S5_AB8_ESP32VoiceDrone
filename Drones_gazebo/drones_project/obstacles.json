@@ -1,0 +1,23 @@
+{
+  "dem_base_altitude": 0.0,
+  "buildings": [
+    {
+      "name": "Building_Near_Start",
+      "x_min": 10.0, "x_max": 30.0,
+      "y_min": 10.0, "y_max": 35.0,
+      "height": 18.0
+    },
+    {
+      "name": "Building_Mid_Corridor",
+      "x_min": -40.0, "x_max": -10.0,
+      "y_min": 60.0, "y_max": 95.0,
+      "height": 22.0
+    },
+    {
+      "name": "Building_Far_Corridor",
+      "x_min": -80.0, "x_max": -45.0,
+      "y_min": 120.0, "y_max": 160.0,
+      "height": 20.0
+    }
+  ]
+}

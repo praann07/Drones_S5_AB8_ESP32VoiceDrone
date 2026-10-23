@@ -1,0 +1,35 @@
+{
+  "dem_base_altitude": 0.0,
+  "buildings": [
+    {
+      "name": "Building_A",
+      "x_min": 10.0, "x_max": 25.0,
+      "y_min": -10.0, "y_max": 10.0,
+      "height": 18.0
+    },
+    {
+      "name": "Building_B",
+      "x_min": 35.0, "x_max": 50.0,
+      "y_min": 5.0, "y_max": 25.0,
+      "height": 22.0
+    },
+    {
+      "name": "Building_C",
+      "x_min": -20.0, "x_max": -5.0,
+      "y_min": 15.0, "y_max": 35.0,
+      "height": 15.0
+    },
+    {
+      "name": "Building_D",
+      "x_min": 15.0, "x_max": 40.0,
+      "y_min": 30.0, "y_max": 55.0,
+      "height": 20.0
+    },
+    {
+      "name": "Building_E",
+      "x_min": 55.0, "x_max": 75.0,
+      "y_min": -20.0, "y_max": 5.0,
+      "height": 25.0
+    }
+  ]
+}
