@@ -1,0 +1,13 @@
+cost per call (full city scene loaded):
+  resetBasePositionAndOrientation (drone)           0.08 ms/call
+  resetBasePositionAndOrientation (car)             0.05 ms/call
+  resetJointState (rotor)                           0.02 ms/call
+  stepSimulation                                    1.17 ms/call
+  getDebugVisualizerCamera                          0.04 ms/call
+  resetDebugVisualizerCamera                        0.02 ms/call
+  addUserDebugText REPLACE (same position)          6.27 ms/call
+  addUserDebugText REPLACE (new position)           6.29 ms/call
+  addUserDebugLine REPLACE                          6.35 ms/call
+  changeVisualShape colour (halo box)               6.45 ms/call
+  changeVisualShape colour (drone link: light)      6.39 ms/call
+  changeVisualShape colour (drone link: disc)       6.40 ms/call

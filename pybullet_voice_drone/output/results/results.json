@@ -1,0 +1,194 @@
+{
+  "generated": "2026-10-21 23:07",
+  "environment": "Python 3.12.10, pybullet 3.2.8, Windows-11-10.0.26300-SP0",
+  "time_step_s": 0.016666666666666666,
+  "measurements": [
+    {
+      "behaviour": "Take-off",
+      "command": "take off",
+      "metric": "time to reach 2 m",
+      "value": 2.783,
+      "unit": "s"
+    },
+    {
+      "behaviour": "Take-off",
+      "command": "take off",
+      "metric": "final altitude error",
+      "value": 0.0,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Measured move",
+      "command": "forward 3 meters",
+      "metric": "time to complete",
+      "value": 3.25,
+      "unit": "s"
+    },
+    {
+      "behaviour": "Measured move",
+      "command": "forward 3 meters",
+      "metric": "along-track error",
+      "value": 0.016,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Measured move",
+      "command": "forward 3 meters",
+      "metric": "sideways error",
+      "value": 0.0,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Measured turn",
+      "command": "rotate left 90 degrees",
+      "metric": "time to complete",
+      "value": 2.9,
+      "unit": "s"
+    },
+    {
+      "behaviour": "Measured turn",
+      "command": "rotate left 90 degrees",
+      "metric": "heading error",
+      "value": 0.126,
+      "unit": "deg"
+    },
+    {
+      "behaviour": "Stop before an obstacle",
+      "command": "forward (towards the first tower)",
+      "metric": "stopping position x",
+      "value": 0.83,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Stop before an obstacle",
+      "command": "forward (towards the first tower)",
+      "metric": "distance held from the safety zone",
+      "value": 0.4,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Stop before an obstacle",
+      "command": "forward (towards the first tower)",
+      "metric": "closest approach to the zone",
+      "value": 0.4,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Stop before an obstacle",
+      "command": "forward (towards the first tower)",
+      "metric": "peak deceleration",
+      "value": 3.0,
+      "unit": "m/s^2"
+    },
+    {
+      "behaviour": "Stop before an obstacle",
+      "command": "forward (towards the first tower)",
+      "metric": "hard safety-net interventions",
+      "value": 0,
+      "unit": "count"
+    },
+    {
+      "behaviour": "Steer around obstacles",
+      "command": "forward through all three towers (--on-obstacle steer)",
+      "metric": "time to the far wall",
+      "value": 9.833,
+      "unit": "s"
+    },
+    {
+      "behaviour": "Steer around obstacles",
+      "command": "forward through all three towers (--on-obstacle steer)",
+      "metric": "closest approach to any zone",
+      "value": 0.699,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Steer around obstacles",
+      "command": "forward through all three towers (--on-obstacle steer)",
+      "metric": "hard safety-net interventions",
+      "value": 0,
+      "unit": "count"
+    },
+    {
+      "behaviour": "Return home (open space)",
+      "command": "go home",
+      "metric": "starting distance",
+      "value": 9.434,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Return home (open space)",
+      "command": "go home",
+      "metric": "time to land",
+      "value": 10.05,
+      "unit": "s"
+    },
+    {
+      "behaviour": "Return home (open space)",
+      "command": "go home",
+      "metric": "landing error from the pad centre",
+      "value": 0.096,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Return home (through the towers)",
+      "command": "go home (--on-obstacle steer)",
+      "metric": "starting distance",
+      "value": 13.013,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Return home (through the towers)",
+      "command": "go home (--on-obstacle steer)",
+      "metric": "time to land",
+      "value": 13.117,
+      "unit": "s"
+    },
+    {
+      "behaviour": "Return home (through the towers)",
+      "command": "go home (--on-obstacle steer)",
+      "metric": "landing error from the pad centre",
+      "value": 0.095,
+      "unit": "m"
+    },
+    {
+      "behaviour": "Randomised safety check",
+      "command": "random start, heading and direction, 20 s each",
+      "metric": "runs",
+      "value": 190,
+      "unit": "count"
+    },
+    {
+      "behaviour": "Randomised safety check",
+      "command": "random start, heading and direction, 20 s each",
+      "metric": "starts discarded (inside a zone)",
+      "value": 30,
+      "unit": "count"
+    },
+    {
+      "behaviour": "Randomised safety check",
+      "command": "random start, heading and direction, 20 s each",
+      "metric": "runs that entered a safety zone",
+      "value": 0,
+      "unit": "count"
+    },
+    {
+      "behaviour": "Randomised safety check",
+      "command": "random start, heading and direction, 20 s each",
+      "metric": "runs that needed the hard safety net",
+      "value": 0,
+      "unit": "count"
+    },
+    {
+      "behaviour": "Randomised safety check",
+      "command": "random start, heading and direction, 20 s each",
+      "metric": "runs that ended held at an obstacle",
+      "value": 27,
+      "unit": "count"
+    }
+  ],
+  "loop_performance": {
+    "frames_in_6_s": 658,
+    "work_ms_per_frame": 2.61,
+    "budget_ms": 8.3
+  }
+}

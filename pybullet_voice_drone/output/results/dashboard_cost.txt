@@ -1,0 +1,3 @@
+frames that store a sample: n=1719 mean 0.0349 ms  max 1.4175 ms
+frames that skip:           n=18281 mean 0.00061 ms  max 0.0972 ms
+total per second of flight: 0.391 ms (of 1000 ms)

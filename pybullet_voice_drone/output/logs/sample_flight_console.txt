@@ -1,0 +1,47 @@
+Type commands here and press Enter (e.g. take off, forward, stop, land, exit).
+
+======================================
+   VOICE CONTROLLED DRONE - PYBULLET
+======================================
+Obstacle detection: ON - the drone will STOP before an obstacle (3 obstacles)
+  Obstacle_1 at x=3.5 y=0.0
+  Obstacle_2 at x=7.0 y=2.0
+  Obstacle_3 at x=5.0 y=-3.0
+Keys (click the PyBullet window first): T take off, L land, H go home, W/A/S/D move,
+      Q/E up/down, arrows rotate, SPACE stop, C camera, P trail, Z safety zones, X exit
+Voice/typed commands accept a distance or angle: 'forward 3 meters', 'rotate left 90 degrees'.
+The drone starts on the ground: take off first.
+
+
+YOU TYPED: take off
+>> TAKE OFF
+>> TAKEOFF COMPLETE - HOVERING
+
+YOU TYPED: forward
+>> FORWARD
+OBSTACLE DETECTED: Obstacle_1
+STOPPED: Obstacle_1 is in the way. Give another direction to move on.
+
+YOU TYPED: back 3 meters
+>> BACKWARD 3 m
+>> MOVE COMPLETE
+
+YOU TYPED: rotate left 90 degrees
+>> ROTATE LEFT 90 deg
+>> TURN COMPLETE
+
+YOU TYPED: left 2 meters
+>> LEFT 2 m
+>> MOVE COMPLETE
+
+YOU TYPED: go home
+>> RETURN HOME
+OBSTACLE DETECTED: Obstacle_1
+>> RETURN HOME COMPLETE
+>> LAND
+>> LANDING COMPLETE
+
+YOU TYPED: exit
+>> EXIT
+
+Drone simulation closed.

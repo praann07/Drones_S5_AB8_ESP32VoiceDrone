@@ -1,0 +1,27 @@
+Behaviour,Command,Metric,Value,Unit
+Take-off,take off,time to reach 2 m,2.783,s
+Take-off,take off,final altitude error,0.0,m
+Measured move,forward 3 meters,time to complete,3.25,s
+Measured move,forward 3 meters,along-track error,0.016,m
+Measured move,forward 3 meters,sideways error,0.0,m
+Measured turn,rotate left 90 degrees,time to complete,2.9,s
+Measured turn,rotate left 90 degrees,heading error,0.126,deg
+Stop before an obstacle,forward (towards the first tower),stopping position x,0.83,m
+Stop before an obstacle,forward (towards the first tower),distance held from the safety zone,0.4,m
+Stop before an obstacle,forward (towards the first tower),closest approach to the zone,0.4,m
+Stop before an obstacle,forward (towards the first tower),peak deceleration,3.0,m/s^2
+Stop before an obstacle,forward (towards the first tower),hard safety-net interventions,0,count
+Steer around obstacles,forward through all three towers (--on-obstacle steer),time to the far wall,9.833,s
+Steer around obstacles,forward through all three towers (--on-obstacle steer),closest approach to any zone,0.699,m
+Steer around obstacles,forward through all three towers (--on-obstacle steer),hard safety-net interventions,0,count
+Return home (open space),go home,starting distance,9.434,m
+Return home (open space),go home,time to land,10.05,s
+Return home (open space),go home,landing error from the pad centre,0.096,m
+Return home (through the towers),go home (--on-obstacle steer),starting distance,13.013,m
+Return home (through the towers),go home (--on-obstacle steer),time to land,13.117,s
+Return home (through the towers),go home (--on-obstacle steer),landing error from the pad centre,0.095,m
+Randomised safety check,"random start, heading and direction, 20 s each",runs,190,count
+Randomised safety check,"random start, heading and direction, 20 s each",starts discarded (inside a zone),30,count
+Randomised safety check,"random start, heading and direction, 20 s each",runs that entered a safety zone,0,count
+Randomised safety check,"random start, heading and direction, 20 s each",runs that needed the hard safety net,0,count
+Randomised safety check,"random start, heading and direction, 20 s each",runs that ended held at an obstacle,27,count
