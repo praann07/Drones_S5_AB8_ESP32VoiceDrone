@@ -348,6 +348,7 @@ Drones_S5_AB8_ESP32VoiceDrone/
     ├── test_drone_core.py           # 145 headless unit tests
     ├── assets/                      # generated textures
     ├── screenshots/                 # pictures used in the READMEs
+    ├── output/                      # results table, screenshots, logs and the scripts that produced them
     ├── legacy/                      # the first versions of the scripts and screenshots
     └── requirements.txt
 ```
