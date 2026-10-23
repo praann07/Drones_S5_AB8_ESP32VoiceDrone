@@ -95,7 +95,7 @@ Each MAVSDK program also starts its own helper process (`mavsdk_server`) with it
 | `voice_control.py`, `voice_control_v2.py`, `voice_controller_v3_newlogic.py` | Earlier voice versions, kept for history (§9). |
 | `testing.py` | Minimal MAVSDK connection test. |
 | `foxglove_bridge.py`, `live_hub.py`, `live_dashboard.py` | Live-visualisation experiments, not part of the main flow (§11). |
-| `docs/images/` | Screenshots used in this README. |
+| `live_tests_image` | Screenshots used in this README. |
 
 ---
 
@@ -400,7 +400,7 @@ PX4 stores the mission and how far it got. QGC reads it on connect and offers to
 | Stage | Files | What it did | Why we moved on |
 | --- | --- | --- | --- |
 | 1. Connect | `testing.py`, `voice_control.py` | Connect to PX4; voice for take off, land, hold. | Needed more commands and a separate port for each program (fixed with `mavlink start -u 14535 -o 14530`). |
-| 2. Full command set | `voice_control_v2.py` | Arm, disarm, move pulses (Offboard velocity), altitude steps, orbit, roll and pitch sweeps, saved points, straight-line "go to". | Straight lines flew over buildings (`docs/images/01_straight_line_goto.png`). |
+| 2. Full command set | `voice_control_v2.py` | Arm, disarm, move pulses (Offboard velocity), altitude steps, orbit, roll and pitch sweeps, saved points, straight-line "go to". | Straight lines flew over buildings (`live_test_images/01_straight_line_goto.png`). |
 | 3. Planning | `voice_controller_v3_newlogic.py`, `path_planner.py` | B-spline route around buildings from `obstacles.json`; operation log. | Mission list showed stale routes; start was denied; buildings looked wrong. |
 | 4. QGC overlay | `voice_controller_v4_gemini.py` | Tried drawing the buildings in QGC through the geofence upload. | Triggered geofence failsafes (§10). |
 | 5. Better planner | `path_planner_v3.py`, `voice_fixes_patch.py` | A\* around all buildings, home-anchored frame, 35-item missions, saved points kept between runs, robust start. | Current state. |
@@ -440,7 +440,7 @@ Each of these cost us time. The first group is fixed or has a safe workaround; t
 | **Substring matching can fire on the wrong command.** | `"arm" in text` also matches words like "alarm"; `"land"` matches "island". | Whole-word matching. |
 | **`data_logger.py` overwrites `flight_data.csv` every run** (it opens the file in write mode). | A second run erases the previous recording. | Rename or copy the file after each session, or change the file name to include a timestamp. |
 | **`data_logger.py` kills every `mavsdk_server` process** at start and exit (`pkill -9`). | If the voice controller is already running, the logger kills its backend and voice control stops responding. | Start the logger **first**. |
-| **Buildings in `obstacles.json` are hand-written boxes.** | They are not the real Gazebo building positions, so the planner avoids imaginary buildings. See the orange boxes in `docs/images/02_bspline_mission_flying.png`. | Measure real building corners (QGC map or the Gazebo world file) and enter them in metres from home. |
+| **Buildings in `obstacles.json` are hand-written boxes.** | They are not the real Gazebo building positions, so the planner avoids imaginary buildings. See the orange boxes in `live_test_images/02_bspline_mission_flying.png`. | Measure real building corners (QGC map or the Gazebo world file) and enter them in metres from home. |
 | **Sweep altitude drift.** | Attitude sweeps use a fixed thrust guess (`HOVER_THRUST_GUESS = 0.5`), so the drone climbs or sinks a little during a 6 s sweep. | Keep sweeps short, or estimate the real hover thrust. |
 | **QGC draws straight lines between waypoints.** | A downloaded route is only as smooth as its point spacing. | Keep points dense, or save the voice-generated plan rather than thinning it. |
 
