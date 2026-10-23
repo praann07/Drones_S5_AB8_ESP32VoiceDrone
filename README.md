@@ -44,12 +44,29 @@ We built four separate models on purpose. Each simulator has different strengths
 - [Team](#team)
 - [Abstract](#abstract)
 - [Introduction](#introduction)
+- [Where to find each project](#branches)
 
 1. [Voice Recognition (common to all models)](#voice-recognition)
 2. [Model 1 · PyBullet — exact moves and safe stopping in a city](#model-1)
 3. [Model 2 · MuJoCo — a controller built from learned physics, on a campus map](#model-2)
 4. [Model 3 · Gazebo — learned-physics controller, summary](#model-3)
 5. [Model 4 · MATLAB — Drone Flight Lab with telemetry analysis](#model-4)
+
+---
+
+<a id="branches"></a>
+## Where to find each project
+
+Every model lives on its own branch of this repository. This page (`main`) is only the overview. Use the branch selector at the top left of the GitHub page, or the links below.
+
+| Project | Branch | What it is | Read first |
+|---|---|---|---|
+| **Model 1 · PyBullet** | [`Drone_pybullet`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/Drone_pybullet) | A voice-controlled drone in a generated city: understands messy speech, flies exact moves, stops before obstacles and draws live graphs. | [README](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/Drone_pybullet/README.md) |
+| **Model 2 · MuJoCo** | [`drone_mujoco`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_mujoco) | A voice-controlled drone whose attitude controller is built from a SINDy-learned equation, flying a 1:10 model of the Amrita Coimbatore campus. | [README](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/drone_mujoco/README.md) |
+| **Model 3 · Gazebo** | [`drone_gazebo`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_gazebo) | A PX4 and Gazebo voice-controlled drone with A\* and B-spline obstacle avoidance and SINDy data logging. | [README](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/drone_gazebo/README.md) |
+| **Model 4 · MATLAB** | [`Drones_Matlab`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/Drones_Matlab) | A MATLAB Drone Flight Lab: buttons and voice input, an obstacle-stop check and telemetry analysis in a 3D city. | [README](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/Drones_Matlab/README.md) |
+| **Earlier attempt (archived)** | [`drone_esp32_sim`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_esp32_sim) | The first attempt: an ESP32/LiteWing-style Python simulator with a keyword voice parser and SINDy/DMDc analysis. Not maintained. | [README (lists the known issues)](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/drone_esp32_sim/README.md) |
+| **Overview** | [`main`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/main) | This page. | You are here |
 
 ---
 
@@ -103,6 +120,7 @@ s(a,b) = \frac{2\,M(a,b)}{|a|+|b|}
 
 | | **Model 1 · PyBullet** | **Model 2 · MuJoCo** | **Model 3 · Gazebo** | **Model 4 · MATLAB** |
 |---|---|---|---|---|
+| **Branch** | [`Drone_pybullet`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/Drone_pybullet) | [`drone_mujoco`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_mujoco) | [`drone_gazebo`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_gazebo) | [`Drones_Matlab`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/Drones_Matlab) |
 | **Focus** | Understanding messy speech, exact moves, safe stopping | Controller built from a learned equation | Controller built from a learned equation (summary) | Command interface, obstacle stop, telemetry analysis |
 | **Flight model** | Kinematic (velocity with limited acceleration) | Full rotor thrust and attitude physics | Learned-physics controller | Simulated drone state in a 3D city |
 | **World** | Generated city plaza with towers and traffic | 1:10 scale Amrita Coimbatore campus | Campus scale model | 3D city-like environment |
@@ -113,6 +131,8 @@ s(a,b) = \frac{2\,M(a,b)}{|a|+|b|}
 
 <a id="model-1"></a>
 ## Model 1 · `Drone_pybullet` — A Voice-Controlled Drone That Understands Messy Speech and Stops Before It Hits Anything
+
+**Branch:** [`Drone_pybullet`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/Drone_pybullet) · [README on the branch](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/Drone_pybullet/README.md)
 
 **In one sentence:** we built a quadcopter in a generated city that you fly by *speaking* (or typing, or pressing keys): it turns imperfect speech-to-text into exact commands, flies precisely as far as you ask, brakes to a safe stop in front of obstacles, and draws its own flight as live graphs in your browser.
 
@@ -329,6 +349,8 @@ Press `C` (or say "camera") to cycle **follow** (keeps whatever angle and zoom y
 
 <a id="model-2"></a>
 ## Model 2 · `drone_mujoco` — A Voice-Controlled Drone Whose Controller Is Built From Learned Physics
+
+**Branch:** [`drone_mujoco`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/drone_mujoco) · [README on the branch](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/drone_mujoco/README.md)
 
 **In one sentence:** we let a computer *discover* the equation that governs how a drone rotates, by watching the drone fly, and then *calculated* the controller from that equation, so that a person can say "go to the central library" and the drone flies there across a scale model of our own campus.
 
@@ -1029,6 +1051,8 @@ Included so that nobody assumes these work:
 
 <a id="model-4"></a>
 ## Model 4 · MATLAB Drone Flight Lab — A Voice-Controlled Drone Simulation in a 3D City
+
+**Branch:** [`Drones_Matlab`](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/tree/Drones_Matlab) · [README on the branch](https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone/blob/Drones_Matlab/README.md)
 
 **In one sentence:** we built a MATLAB simulation in which a user can issue a small set of flight commands through buttons or voice input, watch the drone move through a city-like environment, stop movement when the configured obstacle check detects an unsafe region, and inspect the recorded flight through analysis plots.
 
