@@ -98,6 +98,18 @@ Each stage had a pass/fail gate that had to be met before the next one started.
 | **D. Control** | Inner quaternion loop (gains from the model) and outer position loop (standard physics) | Settling 0.56-0.86 s inner, 1.87 s full cascade, final error 0.0006 m | [`04_control/`](04_control) |
 | **E. Voice demo** | Speech to command to waypoint to trajectory to cascade to MuJoCo | 24/24 trials, 5/5 chained, 36 ms processing latency | [`05_voice_interface/`](05_voice_interface) |
 
+### How the project evolved
+
+| Step | What was built | What forced the next step |
+|---|---|---|
+| **1. Excitation and identification** (Stages A, B) | Open-loop PRBS and chirp data, then SINDy and DMDc fits | The first SINDy fit looked broken (NRMSE 0.99): snapshot pairs had been formed across a trial boundary. Fixed by pairing inside segments only (section 6.7) |
+| **2. Validation** (Stage C) | Rollouts, eigenvalues, noise and sparsity ablations, head-to-head | SINDy selected over DMDc, which is valid near hover only |
+| **3. Cascade controller** (Stage D) | Inner quaternion loop from the SINDy model, outer position loop from standard physics | The first integral term added lag and a 0.196 m overshoot, so it was gated to near-rest (section 6.7) |
+| **4. Voice demo** (Stage E, 2026-09-07) | Speech to command to waypoint to trajectory to cascade to MuJoCo | A browser dashboard was tried the same day and reverted; the matplotlib HUD stayed |
+| **5. Campus world** | 1:10 model of the campus from OSM outlines and a satellite photo, 31 named buildings | Straight lines flew into buildings, so a route planner was needed |
+| **6. Autonomous navigation** (2026-10-19) | A* routing, moving obstacles, no straight-through flights | Review preparation: one launcher, a cleaner HUD (2026-10-21) |
+| **7. Live graphs, wall-graze fix, rounded turns** (2026-10-22) | Live status graphs; the drone can no longer wedge against an angled wall; corners are rounded arcs instead of right angles | Current state |
+
 ---
 
 ## 4. Method
@@ -310,11 +322,41 @@ Each of these was a real failure that was measured and then fixed.
 
 ### Future work
 - A state estimator (Kalman or complementary filter) between noisy IMU data and the controller.
-- Controllability and reachability analysis of the identified model, to bound which attitudes and accelerations it can reach.
+- Controllability of the identified model has been checked for the near-hover DMDc model (full rank, 6 of 6; see `DMDC_DEEP_DIVE.md`). A reachability analysis of the SINDy model over large attitudes is still open.
 - Extend DMDc beyond hover with a Koopman lift, so it can be compared with SINDy across the full envelope.
 - Surveyed building heights, and a roof-aware photo correction for tall buildings.
 - Obstacle perception from simulated sensors instead of perfect knowledge, and lookahead in the avoidance planner.
 - A hardware flight on a real quadrotor with the same frozen model.
+
+
+### Known issues (fixed and open)
+
+**Fixed**
+
+| Problem | Cause | Fix |
+|---|---|---|
+| Chart windows never appeared | The check `"agg" not in get_backend()` also matches `tkagg`, so `fig.show()` never ran | Compare the lower-cased backend name to `"agg"` exactly (`demo.py`, `minimap.py`, `status_graphs.py`) |
+| Drone wedged against a building | `CampusWorld.clamp` only stopped the drone on *entering* a building box. Sliding along an angled wall grazed it at 3 cm, and the 0.34 m hull tipped about 91 degrees | The clamp now also samples the path every 5 cm and stops at the first point inside the margin that is still closing in (`tests/test_wall_graze.py`) |
+| Corners were exact right angles with a speed dip to 0.32 m/s | `CruiseTrajectory` kept only the along-line speed | `CruiseTurnTrajectory` keeps the sideways velocity and bleeds it off with a raised-cosine arc (`tests/test_turn_trajectory.py`) |
+
+**Still open**
+
+| Problem | Effect | Workaround or idea |
+|---|---|---|
+| No recovery after a tip-over | A tipped drone stays down until the demo is restarted | Restart; a recovery or reset command is future work |
+| A `stop` said at speed toward a wall can end inside the 0.3 m margin | The drone is safe from collision but closer than intended | Brake earlier, or lengthen the stopping lookahead |
+| The city world still turns at exact right angles | Rounded turns are applied only on the campus | Extend `CruiseTurnTrajectory` to the city world |
+| The stored near-hover DMDc score (one-step NRMSE 0.0825) did not reproduce today (0.0747) | Cause not yet determined; the SINDy figures were not affected | Re-run `02_identification/run_identification.py` and refresh the stored results |
+| The real-display look of the new graphs and arcs is confirmed only by window checks and plots | Not yet confirmed by eye on a real display | Run `RUN.bat` option 1 and look |
+
+### Left out or not finished
+
+- **State estimator** (Kalman or complementary filter): the controller reads ideal IMU values.
+- **Hardware flight:** everything is simulation at 1:10 scale.
+- **Perception:** obstacles are known exactly; nothing is sensed.
+- **Surveyed building heights:** heights are estimated from the OSM building type.
+- **A web dashboard:** built and then reverted by decision on 2026-09-07.
+- **DMDc beyond hover:** no Koopman lift, so no like-for-like comparison with SINDy over the full envelope.
 
 ---
 
@@ -379,6 +421,15 @@ Double-click **`RUN.bat`** and pick a number:
 | `test_turn_trajectory.py` | 6 | A change of direction sweeps a rounded corner (speed never drops, no velocity jump, acceleration limits kept) |
 | `test_scene_physics_inert.py`, `test_reproducibility.py` | 4 | Visual layers add no physics; seeds reproduce across processes |
 
+### What you can do with it
+
+- **Fly by voice or text:** `take off`, the eight moves, `stop`, `land`, and `go to <building>` for 31 named buildings.
+- **Watch it live:** the HUD, the "Where am I?" map and the live status graphs (altitude, speed, distance to the nearest building, position, command timeline).
+- **Reproduce the results:** the commands in "Reproduce the results" regenerate the plots, tables and the 167-test suite.
+- **Swap the model:** change the SINDy library or threshold in `02_identification/` and see how the gains and the flight change.
+- **Rebuild the world:** regenerate the campus from OSM and the satellite photo (next section).
+- **Extend it:** a state estimator, obstacle sensing and the hardware flight are the natural next steps.
+
 ### Rebuild the campus
 ```powershell
 .\.venv\Scripts\python.exe 01_simulation\models\fetch_satellite.py   # photo (cached after first run)
@@ -409,7 +460,7 @@ Double-click **`RUN.bat`** and pick a number:
 └── CLAUDE.md                  stage-gate log and decision history
 ```
 
-New to the project? Start with [`PROJECT_EXPLAINED.md`](PROJECT_EXPLAINED.md), a plain-language walkthrough of the whole pipeline and every piece of maths.
+New to the project? Start with [`PROJECT_EXPLAINED.md`](PROJECT_EXPLAINED.md), a plain-language walkthrough of the whole pipeline and every piece of maths. For the flow diagrams see [`PIPELINE_FLOW_ARCHITECTURE.md`](PIPELINE_FLOW_ARCHITECTURE.md); for the DMDc mathematics with a worked example see [`DMDC_DEEP_DIVE.md`](DMDC_DEEP_DIVE.md).
 
 More detail: [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md) (code map), [`docs/TDD.md`](docs/TDD.md) (design), [`ONBOARDING.md`](ONBOARDING.md) (what is claimed and how to check it).
 
@@ -418,6 +469,8 @@ More detail: [`docs/CODEBASE_GUIDE.md`](docs/CODEBASE_GUIDE.md) (code map), [`do
 ## 10. Team and branches
 
 B.Tech (AI Engineering), School of Artificial Intelligence, Amrita School of Engineering, Coimbatore, Amrita Vishwa Vidyapeetham.
+
+**Faculty supervisor:** Prof. S. Sunil Kumar (s_sunilkumar@cb.amrita.edu)
 
 | Name | Roll no. |
 |---|---|
@@ -429,8 +482,10 @@ B.Tech (AI Engineering), School of Artificial Intelligence, Amrita School of Eng
 | Branch | Contents |
 |---|---|
 | `drone_mujoco` | **This project**: MuJoCo, SINDy-identified attitude loop, voice demo on the campus |
-| `main` | The original ESP32-based simulator attempt |
-| `drone_gazebo` | Gazebo write-up |
+| `main` | Overview of all four simulation models, with a pipeline and architecture document |
+| `drone_gazebo` | PX4 and Gazebo attempt: voice control, B-spline obstacle avoidance, SINDy data logging |
+| `Drone_pybullet` | PyBullet model: exact moves, safe stopping, live dashboard |
+| `Drones_Matlab` | MATLAB Drone Flight Lab with telemetry analysis |
 
 ---
 
