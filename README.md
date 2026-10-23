@@ -538,8 +538,8 @@ The map is a **1:10 scale copy of the Amrita Coimbatore campus**: 86 buildings (
 **Main reference:** E. Fresk and G. Nikolakopoulos, *Full Quaternion Based Attitude Control for a Quadrotor*, ECC 2013. SINDy: Brunton, Proctor, Kutz, PNAS 2016. DMDc: Proctor, Brunton, Kutz, SIADS 2016.
 
 ---
-<a id="model-2"></a>
-## Model 2 · `drone_gazebo`
+<a id="model-3"></a>
+## Model 3 · `drone_gazebo`
 # Voice-Controlled PX4 Drone with B-Spline Obstacle Avoidance and SINDy Data Logging
 
 Say **"take off"**, **"point library"**, **"fly to library"** and a simulated quadcopter flies a smooth, building-avoiding route there, while QGroundControl shows the route and a logger records flight data for system identification (SINDy).
