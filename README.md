@@ -11,6 +11,12 @@
 
 ---
 
+## Faculty Supervisor
+
+| Role | Name | Email |
+|---|---|---|
+| Faculty Supervisor | Prof. S. Sunil Kumar | s_sunilkumar@cb.amrita.edu |
+
 ## Team Members
 
 | S. No. | Name | Roll Number | Email |
@@ -20,13 +26,42 @@
 | 3 | Ch. Virinchi | CB.SC.U4AIE24158 | cb.sc.u4aie24158@cb.students.amrita.edu |
 | 4 | K. Jatin Chandra Gupta | CB.SC.U4AIE24162 | cb.sc.u4aie24162@cb.students.amrita.edu |
 
-This README describes the `Drone_pybullet` branch. All of its code is in [`pybullet_voice_drone/`](pybullet_voice_drone/); the short usage guide is [`pybullet_voice_drone/README.md`](pybullet_voice_drone/README.md). Other attempts at the same drone are listed in [Section 19](#19-other-work-in-this-repository).
+This README describes the `Drone_pybullet` branch. All of its code is in [`pybullet_voice_drone/`](pybullet_voice_drone/); the short usage guide is [`pybullet_voice_drone/README.md`](pybullet_voice_drone/README.md). Other attempts at the same drone are listed in [Section 23](#23-other-work-in-this-repository).
 
 ---
 
 ## Abstract
 
 This project is a voice-controlled quadcopter simulator built with **PyBullet** and the **SpeechRecognition** library. A speech phrase such as *"forward three meters"* or *"go home"* is transcribed by Google's speech service, turned into a command by a small natural-language parser, and executed by a flight model that moves a drone through a generated city plaza. The drone brakes smoothly and stops in front of obstacles, can fly exactly the distance or angle it is asked for, can return to its take-off pad on its own, and records every flight to a CSV file. A live dashboard opens in the browser with the flight's graphs (altitude, speed, distance to the nearest obstacle, position, a top-down map and a command timeline). The keyboard works at any moment as a manual override. The simulation is kinematic (commanded velocities with a limited acceleration, not simulated rotor thrust), which keeps the focus on the voice interface, command logic and visualisation. The whole system, including the city, textures and traffic, is generated in Python with no downloaded assets, and is covered by 145 headless unit tests.
+
+---
+
+## Contents
+
+- [Abstract](#abstract)
+1. [Introduction](#1-introduction)
+2. [Problem Statement](#2-problem-statement)
+3. [Tools and Background](#3-tools-and-background)
+4. [Methodology](#4-methodology)
+5. [Results](#5-results)
+6. [Parameters](#6-parameters)
+7. [System Architecture](#7-system-architecture)
+8. [Project Structure](#8-project-structure)
+9. [Prerequisites & Installation](#9-prerequisites--installation)
+10. [How to Run](#10-how-to-run)
+11. [Commands](#11-commands)
+12. [Telemetry Format](#12-telemetry-format)
+13. [Running Tests](#13-running-tests)
+14. [How the Project Evolved](#14-how-the-project-evolved)
+15. [Key Observations](#15-key-observations)
+16. [Limitations](#16-limitations)
+17. [Known Issues and Troubleshooting](#17-known-issues-and-troubleshooting)
+18. [Left Out, Abandoned or Not Finished](#18-left-out-abandoned-or-not-finished)
+19. [Future Work](#19-future-work)
+20. [What You Can Do With It](#20-what-you-can-do-with-it)
+21. [Conclusion](#21-conclusion)
+22. [References](#22-references)
+23. [Other Work in This Repository](#23-other-work-in-this-repository)
 
 ---
 
@@ -78,6 +113,21 @@ The system is organised as five layers, each testable on its own without a windo
 
 ```
 speech / typed text → command parser → flight controller → drone + scene (PyBullet) → camera, labels, overlays
+```
+
+The same pipeline as a diagram, with the two side outputs (the CSV log and the live graphs):
+
+```mermaid
+flowchart LR
+    MIC["Microphone"] --> SP["Speech service<br/>up to 3 ranked guesses"]
+    SP --> PA["Command parser<br/>whole words, joins, spelling repair,<br/>distance and angle"]
+    TXT["Typed text<br/>(--console)"] --> PA
+    KEY["Keyboard"] --> FC
+    PA --> FC["Flight controller<br/>states, measured moves, return home,<br/>obstacle check and braking"]
+    FC --> SIM["Drone and city scene<br/>in PyBullet"]
+    SIM --> VIEW["Cameras, labels,<br/>trail, sensor ray"]
+    FC --> CSV["drone_data.csv"]
+    FC --> GR["Live graphs<br/>in the browser"]
 ```
 
 ---
@@ -395,6 +445,30 @@ The drone starts on the helipad: say *"take off"* (or press `T`) first. Useful o
 | `--no-voice`, `--no-log`, `--no-hud`, `--hud-size S`, `--zones`, `--no-trail` | Switch features off or tune them |
 | `--no-graphs`, `--no-browser`, `--graphs-port PORT` | Live graphs: switch them off, serve them without opening the browser, choose the port (default 8765) |
 
+### First flight
+
+A complete first run. Typing the commands works the same as speaking them, so start with typing and switch to the microphone once it works:
+
+```powershell
+cd pybullet_voice_drone
+venv\Scripts\activate
+python obstacles.py --console
+```
+
+Two windows open: the PyBullet window with the city, and the live graphs in the browser (the address, `http://127.0.0.1:8765/`, is also printed in the console). Click the PyBullet window once if you want to use the keyboard. Then say or type, one at a time:
+
+| Step | Say or type | What you should see |
+|---|---|---|
+| 1 | `take off` | The rotors spin up and the drone climbs to 2 m. The console prints `>> TAKE OFF`, then `>> TAKEOFF COMPLETE - HOVERING`. |
+| 2 | `forward` | The drone flies toward the first tower and holds 0.40 m before its safety zone. The tower glows red and the label turns red. The console prints `OBSTACLE DETECTED: Obstacle_1` and `STOPPED: Obstacle_1 is in the way. Give another direction to move on.` |
+| 3 | `back 3 meters` | It flies exactly 3 m back and hovers (`>> MOVE COMPLETE`). |
+| 4 | `rotate left 90 degrees` | It turns 90 degrees and hovers (`>> TURN COMPLETE`). |
+| 5 | `left 2 meters` | It moves 2 m to its left. |
+| 6 | `go home` | It flies back over the pad and lands (`>> RETURN HOME COMPLETE`, then `>> LANDING COMPLETE`). |
+| 7 | `exit` | The window closes. The flight is in `drone_data.csv`, and the graphs page keeps the last data. |
+
+This is the flight recorded in [`pybullet_voice_drone/output/logs/sample_flight_console.txt`](pybullet_voice_drone/output/logs/sample_flight_console.txt). If something does not work, see [Section 17](#17-known-issues-and-troubleshooting).
+
 ---
 
 ## 11. Commands
@@ -468,7 +542,23 @@ Examples of what is checked: the drone never enters a safety zone and never exce
 
 ---
 
-## 14. Key Observations
+## 14. How the Project Evolved
+
+The code on this branch is the result of several rewrites. The earlier scripts are kept in [`pybullet_voice_drone/legacy/`](pybullet_voice_drone/legacy/).
+
+| Stage | Where | What it was |
+|---|---|---|
+| 1. First scripts | `legacy/Voice_Drone_PyBullet_original.py` (208 lines), `legacy/main_original.py` (356 lines) | A drone built from boxes and cylinders, with voice and keyboard control as two separate scripts. Each command moved the drone one fixed step (0.8 m, 0.5 m up, 20 degrees) by setting its position directly. A phrase was matched by looking for a command word anywhere in the text (`"land" in command`), so *island* would have landed it. |
+| 2. Bug-fixed voice script | `legacy/Voice_Drone_PyBullet_FIXED.py` (300 lines) | The same idea after a round of fixes: smaller steps (0.6 m, 0.4 m up, 15 degrees) and rewritten drone-building and command functions. |
+| 3. Obstacles | `legacy/obstacles_original.py` (1,250 lines) | Obstacle boxes, detection ahead and an automatic way around, together with the voice thread in one script. |
+| 4. Obstacles, fixed | `legacy/Voice_Drone_PyBullet_FIXED_obstacles_v1.py` (1,983 lines) | The obstacle script after fixes, with a check that a position is safe, a safe-velocity calculation and an explicit stop. |
+| 5. One core module | commit `1b56094` | Everything merged into `drone_core.py` (1,591 lines) with three small launchers and 86 headless tests: flight states, smooth acceleration, measured moves, return home, stopping before obstacles (with an optional steer-around mode), whole-word parsing and telemetry. |
+| 6. City and smarter voice | commit `8a56906` | The generated city plaza (`scene_city.py`, `scene_assets.py`), four cameras, labels attached to the drone, Indian-English recognition with the top three guesses, joining of split words, spelling repair and a listener that keeps hearing while a phrase is being transcribed. 133 tests. |
+| 7. Live graphs and results | commits `2b238aa` to `751a5d4` | The browser dashboard (`dashboard.py`, `dashboard.html`), 12 more tests (145 in all) and the [`output/`](pybullet_voice_drone/output/) folder with the measured results, screenshots, logs and the scripts that produced them. |
+
+---
+
+## 15. Key Observations
 
 1. Ranking matters more than accuracy: taking the first of Google's top three guesses that is a command recovers phrases whose best guess is wrong.
 2. A keyboard override must not fight a voice command: held keys steer, and with no key activity a running voice command carries on.
@@ -480,7 +570,7 @@ Examples of what is checked: the drone never enters a safety zone and never exce
 
 ---
 
-## 15. Limitations
+## 16. Limitations
 
 - The flight model is kinematic: it does not simulate rotor thrust, attitude control, drag or wind.
 - Speech recognition needs an internet connection, and everything the microphone hears, background talk included, is sent to Google's service.
@@ -490,7 +580,58 @@ Examples of what is checked: the drone never enters a safety zone and never exce
 
 ---
 
-## 16. Future Work
+## 17. Known Issues and Troubleshooting
+
+Problems met while building the project, and what to do about them on another computer. The first table lists what was fixed and how. The second lists what you may still run into.
+
+### Found and fixed
+
+| Problem | Cause | What fixed it |
+|---|---|---|
+| A phrase containing a command word inside another word (*island*) triggered the command | The first scripts looked for the command word anywhere in the text (`"land" in command`) | Whole-word matching ([Section 4.1](#41-from-speech-to-a-command)) |
+| A command spoken right after another was lost | Recording and transcribing ran in one thread, so the microphone was deaf while the speech service answered | One thread only records and a second one transcribes ([Section 4.1](#41-from-speech-to-a-command)) |
+| The window ran at about 11 to 14 frames per second | Every label was re-pinned and rewritten each frame, and a text or colour change costs several milliseconds in PyBullet's window | Labels attached to the drone and rewritten rarely: about 112 frames per second ([Section 4.8](#48-keeping-it-smooth-measuring-the-gui), [Section 5.4](#54-loop-performance)) |
+| The drone restarted by itself after being held at an obstacle | The held command stayed active, so turning the drone toward open space resumed it | The command is dropped when the drone is held ([Section 15](#15-key-observations)) |
+| Flicker on the floor | Wide, very thin discs a few millimetres above the floor | Thin boxes instead ([Section 15](#15-key-observations)) |
+| Building shadows covered the area the drone flies in | Tall buildings on the sunny side | Buildings are taller on the side away from the sun ([Section 4.6](#46-the-scene)) |
+
+### What you may still run into
+
+| What you see | Cause | What to do |
+|---|---|---|
+| `ERROR: could not connect to the PyBullet GUI. Close any old PyBullet windows and retry.` | Usually an old PyBullet window is still open | Close old PyBullet windows (or end the leftover Python process) and start again |
+| `Voice control unavailable: SpeechRecognition is not installed` | The package is missing | `pip install -r requirements.txt` |
+| `Voice control unavailable: ... Keyboard control still works` | No microphone, or PyAudio is not installed | Install PyAudio ([Section 9](#9-prerequisites--installation)), or fly with the keyboard or `--console` |
+| `Speech service unreachable (needs internet)` | Google's speech service needs an internet connection | Reconnect, or type commands with `--console`. The message repeats at most every 10 seconds |
+| `COMMAND NOT RECOGNIZED` for a phrase you meant | Background noise or an accent the service misheard | Check the `heard` label above the drone, say the command word on its own, try `--language en-US` or `en-GB`, or type with `--console` |
+| `Still transcribing earlier speech - dropped a recording.` | Six recordings were already waiting for the speech service | Pause between phrases and check the connection |
+| The keys do nothing | The PyBullet window does not have the keyboard focus | Click the window first |
+| `Live graphs unavailable (...)` | None of the ports 8765 to 8774 could be opened | `--graphs-port PORT` with a free port, or `--no-graphs` |
+| `Telemetry logging disabled (...)` | `drone_data.csv` cannot be written, for example because another program has it open | Close that program, or use `--telemetry-file PATH` or `--no-log` |
+| `No obstacles in this mode (try obstacles.py or --obstacles).` | Z was pressed in a mode that has no obstacles | Start with `python obstacles.py`, or add `--obstacles` |
+| The window is slow | Weak graphics hardware, and the full city has many objects | `--scene simple`, or `--no-hud` |
+| The labels are too large or too small | PyBullet scales text differently on different machines | `[` and `]` while flying, or `--hud-size` |
+| The first start takes longer | Textures and meshes are generated on the first run (`assets/mesh/` is not tracked) | Wait once; later starts reuse them |
+| `python -m unittest` cannot find `drone_core` | It was started from the wrong folder | `cd pybullet_voice_drone` first |
+
+---
+
+## 18. Left Out, Abandoned or Not Finished
+
+Listed so that nobody assumes these exist.
+
+- **Rotor thrust, attitude control, drag and wind.** The flight model is kinematic on purpose. The dynamics-based versions are on the `drone_mujoco` and `drone_gazebo` branches ([Section 23](#23-other-work-in-this-repository)).
+- **A screen-fixed on-screen display.** PyBullet can only draw text at a 3D position, and re-pinning text to the screen every frame costs several milliseconds while the scene moves ([Section 4.8](#48-keeping-it-smooth-measuring-the-gui)). The labels are attached to the drone instead.
+- **A smooth fade of the rotor discs.** Every colour change is a call into the window, so the discs use three opacity levels.
+- **Sensing and mapping.** The drone knows the exact positions of the obstacles. There is no sensor model, no map building and there are no moving obstacles.
+- **Offline speech recognition.** Speech goes to Google's service, so it needs internet and sends whatever the microphone hears. The `main` branch uses an offline recogniser (Vosk) for the ESP32 simulator.
+- **Commands from the graphs page.** The dashboard only shows data, on purpose. It accepts no commands.
+- **Named waypoints, stored missions and failsafes.** Planned ([Section 19](#19-future-work)), not built.
+- **Hardware.** Everything is simulation. No real drone flew.
+
+---
+
+## 19. Future Work
 
 - Waypoint navigation by name (*"go to point A"*) and a stored mission (HOME → A → B → C → HOME), as in the team's plan for the ESP32 drone.
 - Failsafes: return home on geofence breach, low battery or lost connection.
@@ -500,13 +641,26 @@ Examples of what is checked: the drone never enters a safety zone and never exce
 
 ---
 
-## 17. Conclusion
+## 20. What You Can Do With It
+
+- **Move or add obstacles.** Edit `DEFAULT_OBSTACLES` in `drone_core.py`. Each entry is a name, a centre `(x, y, z)` and half-sizes `(hx, hy, hz)` in metres, for example `Obstacle("Obstacle_4", (-4.0, 3.0, 1.5), (0.7, 0.7, 1.5))`. The city scene builds a kiosk tower for each entry. Keep them inside the geofence (`WORLD_LIMIT`, 12 m). Every safety zone grows by 1.57 m around its box (the drone's 1.32 m radius plus 0.25 m of clearance), so two obstacles closer than about 3.1 m face to face leave no gap the drone may use.
+- **Add or change command words.** `_WORD_INTENTS` maps each spoken word to an intent, so a new synonym is one line (`"ascend"` already means *up*). A new kind of action needs a new `Intent` and a branch in `apply_intent`. Run the tests afterwards.
+- **Change how the drone flies.** The constants at the top of `drone_core.py` set the speeds, acceleration, take-off and ceiling heights, the braking distance and the detection range ([Section 6](#6-parameters)). Keep `BRAKE_DECEL` below `ACCELERATION`, so that the planned stop is always achievable.
+- **Go around instead of stopping.** Start with `--on-obstacle steer`.
+- **Use another accent or language.** Start with `--language en-US`, `en-GB` and so on.
+- **Analyse a flight.** Open `drone_data.csv` ([Section 12](#12-telemetry-format)) or press Download CSV on the graphs page. The scripts in [`pybullet_voice_drone/output/results/scripts/`](pybullet_voice_drone/output/results/scripts/) repeat the measurements.
+- **Run it on a slow computer.** Use `--scene simple` and `--no-hud`.
+- **Extend the tests.** Add cases to `test_drone_core.py`. They run headless, so they need no window, microphone or internet.
+
+---
+
+## 21. Conclusion
 
 The project shows that a voice interface for a drone depends as much on forgiving command handling as on the recogniser: ranked guesses, split-word joining, spelling repair and strict whole-word matching turn imperfect transcripts into reliable commands without turning conversation into commands. Behind the interface, a kinematic flight model with smooth acceleration, measured manoeuvres, return-home and a braking-based obstacle stop gives deterministic behaviour that is verified by measurement (a 3 m move ends 1.6 cm from its target, the drone holds exactly 0.40 m from an obstacle's safety zone, and 190 randomised runs never entered one) and by 145 automated tests. A generated city, four cameras and on-screen labels make the behaviour easy to see, and measuring the real cost of each GUI call kept the whole system smooth.
 
 ---
 
-## 18. References
+## 22. References
 
 1. E. Coumans and Y. Bai, *PyBullet, a Python module for physics simulation for games, robotics and machine learning*, http://pybullet.org, 2016 – 2021.
 2. A. Zhang, *SpeechRecognition* (Python library), https://github.com/Uberi/speech_recognition.
@@ -514,7 +668,7 @@ The project shows that a voice interface for a drone depends as much on forgivin
 
 ---
 
-## 19. Other Work in This Repository
+## 23. Other Work in This Repository
 
 The repository holds several attempts at the same voice-controlled drone, each on its own branch:
 
