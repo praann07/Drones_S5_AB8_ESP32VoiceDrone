@@ -562,7 +562,7 @@ Everything runs in simulation: **PX4 SITL + Gazebo (x500 quadcopter)** on the ET
 8. [Using QGroundControl with it](#8-using-qgroundcontrol-with-it)
 9. [How the project evolved](#9-how-the-project-evolved)
 10. [Known issues and problems you may hit](#10-known-issues-and-problems-you-may-hit)
-11. [Left out, abandoned or not finished](#11-left-out-abandoned-or-not-finished)
+11. [Left out, abandoned](#11-left-out-abandoned-or-not-finished)
 12. [What you can do with it](#12-what-you-can-do-with-it)
 13. [Credits and references](#13-credits-and-references)
 
@@ -988,7 +988,7 @@ Each of these cost us time. The first group is fixed or has a safe workaround; t
 
 ---
 
-## 11. Left out, abandoned or not finished
+## 11. Left out, abandoned
 
 Included so that nobody assumes these work:
 
