@@ -232,7 +232,7 @@ and the horizontal command is limited to $\lvert a_{cmd,xy} \rvert \le g \tan\th
 **Attitude.** The commanded tilt follows from the acceleration, and the attitude moves towards it with a rate limit of $75^\circ$/s in roll and pitch and $100^\circ$/s in yaw:
 
 ```math
-\theta_{cmd} = -\operatorname{atan2}(a_{cmd,x},\ g), \qquad \phi_{cmd} = \operatorname{atan2}(a_{cmd,y},\ g)
+\theta_{cmd} = -\mathrm{atan2}(a_{cmd,x},\ g), \qquad \phi_{cmd} = \mathrm{atan2}(a_{cmd,y},\ g)
 ```
 
 **Translation.** The horizontal acceleration comes from the actual tilt, plus wind and a quadratic drag term; vertical thrust compensates for the tilt:
