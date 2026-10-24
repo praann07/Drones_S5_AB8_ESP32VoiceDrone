@@ -8,7 +8,7 @@ A MATLAB-based drone flight simulation with seven flight commands, a separate vo
 - `listen_voice.ps1` — Windows voice-listener helper.
 - `README_SETUP.txt` — setup instructions supplied with the project.
 - `OBSTACLE_STOP_FIX.txt` — obstacle-stop notes supplied with the project.
-- `outputs/` — six supplied output-graph screenshots.
+- `outputs/` — flight plots regenerated at 200 dpi from a run of the simulation, a ground-track plot and an app screenshot.
 
 ## Requirements and installation
 
@@ -69,7 +69,19 @@ If the folder has a different name or location after extraction, update the path
 
 ![Drone attitude](outputs/drone_attitude_roll_pitch_yaw.png)
 
-> **Note:** These images are the output screenshots supplied with the project. They are not freshly regenerated MATLAB figures or raw telemetry data.
+### Motor outputs
+
+![Motor outputs](outputs/motor_outputs.png)
+
+### Ground track (top view)
+
+![Ground track](outputs/flight_ground_track.png)
+
+### The app during the obstacle stop
+
+![The flight lab during the obstacle stop at the East barrier](outputs/app_obstacle_stop.png)
+
+> **Note:** All images come from one run of `DroneFlightLab_2026.m` on 2026-10-24 (MATLAB R2026a, 200 dpi): `TAKE OFF` at $t = 0.02$ s, an automatic cruise east, an obstacle stop at the East barrier at $t = 6.84$ s, `RETURN TO HOME` at $t = 44.6$ s and touchdown at $t = 51.1$ s. They are plotted from the telemetry the app logs. The [branch README](../README.md#3-the-mathematics-step-by-step) lists the events and results, and describes how the plots were made.
 
 ## Obstacle-stop behavior and limitations
 

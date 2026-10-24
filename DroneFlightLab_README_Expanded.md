@@ -85,6 +85,32 @@ The five steps form a single workflow: input creates a request, the simulation c
 
 This section explains the quantities used to analyse the flight. These are standard state and error definitions; they should not be read as proof that the simulation uses a particular advanced controller or physical model.
 
+**The flight in the figures.** All plots in this section come from one run of `DroneFlightLab_2026.m` with two commands, the same sequence as the project's original screenshots. Everything between them happens automatically in the code:
+
+| Event | Time | What the code does |
+|---|---|---|
+| `TAKE OFF` | $t = 0.02$ s | Target altitude 6 m, heading kept at yaw 0 (east) |
+| Cruise | $t = 3.86$ s | Altitude $\ge 5.75$ m and $\lvert v_z \rvert < 0.45$ m/s, so the mode becomes CRUISE: the target runs 4 m ahead along the heading |
+| Obstacle stop | $t = 6.84$ s | The next step would enter the East barrier's safety circle: velocity set to zero, position frozen |
+| `RETURN TO HOME` | $t = 44.64$ s | Target $(0, 0, 6)$ m |
+| Landing | $t = 47.44$ s | Within 1 m of home and below 7 m, so the target altitude becomes 0 |
+| Touchdown | $t = 51.14$ s | Below 0.12 m and slower than 0.25 m/s: motors disarmed |
+
+Results, computed from the 503 samples the app logs at 10 Hz ($t = 0.02$ to $54.94$ s):
+
+| Quantity | Value |
+|---|---|
+| Peak altitude | 6.36 m |
+| Peak total speed | 3.20 m/s (the horizontal limit `maxSpeed` is 3.2 m/s) |
+| Stop position | East 6.96 m, North 1.5 cm: 2.04 m from the East barrier centre, safety radius $0.34 + 1.65 = 1.99$ m |
+| Pitch range | $-23.8^\circ$ to $+24.5^\circ$ |
+| Largest north deviation | 7.2 cm |
+| 3D error $e_{3D}$ (Section 3.2) | maximum 6.97 m, mean 0.94 m, RMSE 2.09 m |
+| Touchdown point | East 0.11 m, North 0.05 m from HOME |
+| Battery at the end | 97.3 % |
+
+The large errors are command steps (the target jumps ahead or back home), not drift: while the drone is held at the obstacle stop (336 samples) $e_{3D}$ is exactly 0, because the code freezes the position at the target. How the plots were made is described at the end of this section.
+
 #### 3.1 Position and target
 
 The drone's position can be represented by a three-dimensional vector:
@@ -147,7 +173,7 @@ For samples $e_{3D}(1), \ldots, e_{3D}(N)$, the RMSE of the 3D error magnitude i
 \mathrm{RMSE}_{3D} = \sqrt{\frac{1}{N}\sum_{k=1}^{N} e_{3D}(k)^2}
 ```
 
-These measures should only be reported after calculating them from actual telemetry. A plot by itself does not establish a numerical RMSE.
+These measures should only be reported after calculating them from actual telemetry. A plot by itself does not establish a numerical RMSE. For the flight in the figures they were computed from the 503 logged samples; the values are in the results table at the start of this section.
 
 ![Axis Wise and 3D Tracking Error](DroneFlightLab_MATLAB/outputs/axis_wise_and_3d_tracking_error.png)
 
@@ -205,6 +231,10 @@ A sudden attitude change may coincide with a command transition or correction, b
 
 ![Drone Attitude Roll Pitch Yaw](DroneFlightLab_MATLAB/outputs/drone_attitude_roll_pitch_yaw.png)
 
+The motor plot shows `logMot`, the values behind the four motor bars of the app. In the code each value is the collective thrust $(g + a_{cmd,z})/(2g)$ plus $\pm 0.42$ times the roll or pitch command, with a first-order spool-up lag. It is a visual proxy, not a motor model.
+
+![Motor Outputs](DroneFlightLab_MATLAB/outputs/motor_outputs.png)
+
 #### 3.6 Why data alignment matters
 
 The time vector and each telemetry array must refer to the same samples. If `logT` contains 100 samples but `logPos` contains 95, plotting them against each other will fail or produce misleading results. The position and target arrays should also have the expected number of columns, usually three for the three coordinates.
@@ -259,9 +289,23 @@ The step is refused (the drone stops at its last safe position) if that point li
 
 **Failsafes.** Geofence of 75 m from home (return home), battery below 20 % (return home) and below 10 % (land). The motor bars are a visual proxy computed from the commands, not a motor model.
 
-#### Regenerating the plots at a readable resolution
+#### How the plots were made, and how to make your own
 
-The six images in `DroneFlightLab_MATLAB/outputs/` are screenshots supplied with the project (about $550 \times 250$ pixels). To export sharper versions after a flight, press **SAVE CSV**, then plot the CSV and export each figure, for example:
+The plots in `DroneFlightLab_MATLAB/outputs/` were regenerated on 2026-10-24 with MATLAB R2026a and exported with `exportgraphics` at 200 dpi (about 2000 pixels wide). They replace screen captures of about $550 \times 250$ pixels.
+
+1. **Run.** `DroneFlightLab_2026.m` was run with its physics, control and safety code unchanged. Only the driver differed: the `command()` function that the buttons call was invoked at fixed simulation times (`TAKE OFF` at $t = 0.02$ s, `RETURN TO HOME` at $t = 44.6$ s), and the real-time `pause` was skipped. Simulation time advances by $\Delta t = 0.02$ s per step in both cases, so the trajectory is the one an interactive run with the same command timing produces.
+2. **Plot.** The arrays the app logs at 10 Hz (`logT`, `logPos`, `logTarget`, `logVel`, `logAtt`, `logMot`) were plotted directly. Event lines mark the mode changes, and every number in a subtitle is computed from the logged data.
+3. **Check.** The rerun reproduces the original screenshots: the stop at 6.96 m east (about 7 m there), the north peak of 7.2 cm and the pitch peaks of $-23.8^\circ$ and $+24.5^\circ$.
+
+The app screenshot in Section 5 is a `getframe` capture of the app window at $t = 10$ s of the same run.
+
+To export your own flight, note that the code has a `saveCsv` function that writes `DroneFlightLab_Telemetry.csv`, but no button calls it in this version. One way is to add this line after the other `mkbtn` calls in `DroneFlightLab_2026.m`, which puts a **SAVE CSV** button below **RETURN TO HOME**:
+
+```matlab
+mkbtn('SAVE CSV', [.04 .02 .92 .065], @saveCsv, [.25 .25 .30]);
+```
+
+Fly, press **SAVE CSV**, then plot the CSV and export each figure, for example:
 
 ```matlab
 T = readtable('DroneFlightLab_Telemetry.csv');
@@ -303,7 +347,9 @@ exportgraphics(f, 'outputs/altitude_actual_vs_target.png', 'Resolution', 200)
 
 The simulation presents a three-dimensional, city-like environment containing buildings and configured obstacle regions. This scene gives the user a visual reference for the drone's movement and helps demonstrate the obstacle-stop behavior.
 
-The screenshot of the simulation is intentionally not embedded in this Markdown file. If you want to show it in a repository later, add the image separately and insert a relative image link at this point.
+![The flight lab during the obstacle stop at the East barrier](DroneFlightLab_MATLAB/outputs/app_obstacle_stop.png)
+
+*The app at $t = 10$ s of the flight in Section 3. The drone holds 6.4 m up, 2.04 m west of the East barrier, and the telemetry panel reports `OBSTACLE STOP: EAST BARRIER`. For this capture the 3D camera was turned to azimuth $-12^\circ$, elevation $14^\circ$. The app opens at $48^\circ$, $24^\circ$, where the hovering drone appears in front of the North barrier.*
 
 The environment and safety check should use consistent coordinates. A visual building and a numerical obstacle region are not necessarily the same thing unless both are configured and checked by the simulation code.
 
@@ -321,6 +367,10 @@ The obstacle-stop behavior is deliberately different from obstacle avoidance:
 - **Avoidance behaviour:** calculate a different direction or route and continue moving around the obstacle.
 
 This project description covers the first behaviour. It should not be described as A*, LiDAR-based planning, automatic detouring, or complete 3D collision avoidance unless those functions are actually implemented in the submitted source.
+
+![Ground track of the flight in Section 3](DroneFlightLab_MATLAB/outputs/flight_ground_track.png)
+
+*Top view of the same flight. Each barrier is a disc of radius $r$ (0.34 m, or 0.42 m for NORTHEAST) with a safety boundary at $r + 1.65$ m. The drone stopped when its next step would have entered the East barrier's boundary, 2.04 m from the barrier centre. Buildings are checked the same way with a bounding circle (Section 3.7). The barriers are 2.2 m and 2.8 m tall, but the check is horizontal, so the drone also stops when it flies above them.*
 
 ### 6. What is and is not claimed
 
