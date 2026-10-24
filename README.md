@@ -43,22 +43,20 @@ Everything runs in simulation: **PX4 SITL + Gazebo (x500 quadcopter)** on the ET
 
 ## 2. How it fits together
 
+```mermaid
+flowchart TD
+    PX4["PX4 SITL + Gazebo x500<br/>flight controller and physics"]
+    PX4 -->|"MAVLink UDP 14550"| QGC["QGroundControl<br/>map, plan, mission view"]
+    PX4 -->|"MAVLink UDP 14540"| LOG["data_logger.py"]
+    PX4 -->|"extra stream, PX4 -o 14530"| VC["voice_controller_v4_gemini.py<br/>Vosk, commands, MAVSDK"]
+    PX4 -.->|"UDP 14535, optional"| LH["live_hub.py / Foxglove<br/>optional, see section 11"]
+    LOG --> CSV["flight_data.csv"]
+    CSV --> SY["fit_sindy_clean.py<br/>SINDy model"]
+    VC --> PP["Path planner<br/>A* and cubic B-spline"]
+    PP -->|"35-item mission"| PX4
 ```
-                 ┌───────────────────────────────┐
-                 │  PX4 SITL  +  Gazebo (x500)   │   flight controller + physics
-                 └──────┬─────────────┬──────────┘
-        MAVLink (UDP)   │             │
-   ┌────────────────────┼─────────────┼───────────────────────┐
-   │ 14550              │ 14540       │ 14530 (PX4 -o)        │ 14535 (PX4 -u)
-   ▼                    ▼             ▼                       ▼
- QGroundControl   data_logger.py   voice_controller_v4   live_hub.py / Foxglove
- (map, plan,      → flight_data    (Vosk → commands →    (optional, see §11)
-  mission view)     .csv            planner → MAVSDK)
-                        │                  │
-                        ▼                  ▼
-                   fit_sindy*.py     path_planner  ──►  mission uploaded to PX4
-                                     (A* + B-spline)     and shown in QGC
-```
+
+*Programs and MAVLink ports. Solid lines are the main flow; the dashed line is the abandoned live-view experiment.*
 
 PX4 normally exposes one telemetry stream for QGC (14550) and one for onboard programs (14540). We needed more, so we add a second stream by hand at the PX4 prompt:
 
@@ -80,22 +78,26 @@ Each MAVSDK program also starts its own helper process (`mavsdk_server`) with it
 
 ## 3. Repository layout
 
+All code is in [`Drones_gazebo/drones_project/`](Drones_gazebo/drones_project/) and the screenshots are in [`live_test_images/live_test_images/`](live_test_images/live_test_images/).
+
+> **Status of the newest code.** As committed, `voice_controller_v4_gemini.py` still imports the first planner (`from path_planner import SplinePathPlanner`) and still sets a speed on every mission item. `path_planner_v3.py` has the same class and `generate_bspline_path()` method, so switching to it is a one-line change: `from path_planner_v3 import SplinePathPlanner`. `voice_fixes_patch.py` holds functions to paste into v4; the file itself says they are **not yet tested against a live PX4**. Sections 6 and 10 describe the behaviour with these fixes applied.
+
 | File | Purpose |
 | --- | --- |
 | `voice_controller_v4_gemini.py` | **Main program.** Voice commands, saved points, B-spline missions. |
-| `path_planner.py` / `path_planner_2.py` | First planner: one bypass waypoint per building on the straight line, then a spline. (The two files are identical.) |
-| `path_planner_v3.py` | **Current planner**: A\* around all inflated buildings, then a cubic B-spline and a collision check. |
-| `voice_fixes_patch.py` | Fixes for the voice controller: persistent saved points, home-anchored coordinates, 35-item missions, robust mission start, safer geofence handling. |
+| `path_planner.py` / `path_planner_2.py` | First planner: one bypass waypoint per building on the straight line, then a spline. (The two files are identical; `path_planner_2.txt` is an older text copy.) This is the planner v4 imports. |
+| `path_planner_v3.py` | **Newest planner** (tested offline, not yet imported by v4): A\* around all inflated buildings, then a cubic B-spline and a collision check. |
+| `voice_fixes_patch.py` | Functions to paste into v4 (not yet tested in SITL): persistent saved points, home-anchored coordinates, 35-item missions, robust mission start, safer geofence handling. |
 | `obstacles.json` | Buildings as boxes in metres, relative to the home position. `obstacles.json.save` and `obstacles1.txt` are earlier copies. |
 | `data_logger.py` | Records telemetry to `flight_data.csv`. |
 | `flight_data.csv` | Our recording: 47,035 rows, about 17 minutes. |
 | `fit_sindy.py` | First SINDy attempt (degree-2 library on 9 variables). |
 | `fit_sindy_clean.py` | Second SINDy attempt (small, interpretable model with a held-out test). |
 | `operation_log.csv` | Log of voice commands. |
-| `voice_control.py`, `voice_control_v2.py`, `voice_controller_v3_newlogic.py` | Earlier voice versions, kept for history (§9). |
+| `voice_control.py`, `voice_control_2.py`, `voice_control_v2.py`, `voice_controller_v3_newlogic.py` | Earlier voice versions, kept for history (§9). |
 | `testing.py` | Minimal MAVSDK connection test. |
 | `foxglove_bridge.py`, `live_hub.py`, `live_dashboard.py` | Live-visualisation experiments, not part of the main flow (§11). |
-| `live_tests_image` | Screenshots used in this README. |
+| `live_test_images/live_test_images/` | Full-resolution screenshots from our SITL runs (about 1900 by 1200 pixels). |
 
 ---
 
@@ -109,11 +111,34 @@ Each MAVSDK program also starts its own helper process (`mavsdk_server`) with it
 - A **microphone** that Python can open. If PX4 runs inside WSL, audio must be passed through to Linux (for example with WSLg), or the voice program will not hear you.
 - First run downloads the small English Vosk model (`vosk-model-small-en-us-0.15`) into `~/.cache/vosk/`, so it needs internet once.
 
+**1. PX4 SITL and Gazebo** (Ubuntu 22.04; see the [PX4 Ubuntu setup guide](https://docs.px4.io/main/en/dev_setup/dev_env_linux_ubuntu.html)):
+
 ```bash
+git clone https://github.com/PX4/PX4-Autopilot.git --recursive
+bash ./PX4-Autopilot/Tools/setup/ubuntu.sh       # installs the toolchain and Gazebo; log out and in afterwards
+cd PX4-Autopilot && make px4_sitl gz_x500         # first build takes a while, then Gazebo opens with the x500
+```
+
+**2. QGroundControl:** download it for your system from the [QGroundControl install guide](https://docs.qgroundcontrol.com/master/en/qgc-user-guide/getting_started/download_and_install.html). It connects to PX4 on UDP 14550 by itself.
+
+**3. This project and its Python packages:**
+
+```bash
+sudo apt install libportaudio2                    # audio backend needed by sounddevice
+git clone --branch drone_gazebo --single-branch https://github.com/praann07/Drones_S5_AB8_ESP32VoiceDrone.git
+cd Drones_S5_AB8_ESP32VoiceDrone/Drones_gazebo/drones_project
+python3 -m venv venv && source venv/bin/activate
 pip install mavsdk vosk sounddevice numpy scipy pandas pysindy matplotlib
 # only for the optional live-view experiments:
 pip install websockets pymavlink foxglove-websocket
 ```
+
+| Package | Used for |
+| --- | --- |
+| `mavsdk` | Talking to PX4 over MAVLink: telemetry, actions, offboard control, missions |
+| `vosk`, `sounddevice` | Offline speech recognition and 16 kHz microphone capture |
+| `numpy`, `scipy` | A\* grid, B-spline fitting (`splprep`, `splev`) |
+| `pandas`, `pysindy`, `matplotlib` | Loading `flight_data.csv`, fitting SINDy models, plots |
 
 ### 4.2 Start order matters
 
@@ -130,10 +155,11 @@ pxh> mavlink start -u 14535 -o 14530 -r 4000 -t 127.0.0.1
 **Terminal 2: data logger (start this one first, before the voice program)**
 
 ```bash
+cd Drones_S5_AB8_ESP32VoiceDrone/Drones_gazebo/drones_project
 python3 data_logger.py        # Ctrl+C to stop and save
 ```
 
-**Terminal 3: voice controller**
+**Terminal 3: voice controller** (same folder)
 
 ```bash
 python3 voice_controller_v4_gemini.py
@@ -168,7 +194,7 @@ PX4 remembers the last mission and geofence, and QGC downloads them when it conn
 | `move forward / backward / left / right` | Fly 2 m/s for 2 s in that direction, then hold. |
 | `ascend`, `descend` | Change altitude by 2 m (never below 2 m). |
 | `circle maneuver` | Orbit a 10 m circle at 3 m/s, then hold. |
-| `pitch sweep`, `roll sweep` | Command a ±10° sine-wave angle at 0.5 Hz for 6 s (used to excite the drone for SINDy). |
+| `pitch sweep`, `roll sweep` | Command a $\pm 10^\circ$ sine-wave angle at 0.5 Hz for 6 s (used to excite the drone for SINDy). |
 | `exit` | Stop the program. |
 
 How a spoken sentence becomes an action:
@@ -187,13 +213,27 @@ Offboard commands (move, sweep) always fall back to `hold` in a `finally` block,
 
 ## 6. Path planning: A\* and B-spline
 
-When you say "fly to X", the controller turns the saved GPS point into a route in four steps.
+When you say "fly to X", the controller turns the saved GPS point into a route in four steps. This section describes `path_planner_v3.py` and the mission-start code in `voice_fixes_patch.py` (see the status note in §3).
+
+```mermaid
+flowchart TD
+    A["Saved point<br/>lat, lon, alt"] --> B["Local frame<br/>metres east and north of home"]
+    B --> C["Grow buildings<br/>by margin m"]
+    C --> D["A* on a 1 m grid"]
+    D --> E["Keep corner points<br/>line-of-sight pruning"]
+    E --> F["Cubic B-spline<br/>splprep, k = 3"]
+    F --> G{"400-sample<br/>collision check"}
+    G -->|"hit: m + 2 m, up to 6 tries"| C
+    G -->|"clear"| H["35 mission items<br/>upload and start"]
+```
 
 ### 6.1 Local frame
 
-The drone's position and the target are converted from latitude and longitude to metres east (x) and north (y) of the home position, where φ is latitude and λ is longitude:
+The drone's position and the target are converted from latitude and longitude to metres east (x) and north (y) of the home position, where $\phi$ is latitude and $\lambda$ is longitude:
 
-$$x = (\lambda-\lambda_0)\cdot 111320\cos\phi_0, \qquad y = (\phi-\phi_0)\cdot 111320$$
+```math
+x = (\lambda-\lambda_0)\cdot 111320\cos\phi_0, \qquad y = (\phi-\phi_0)\cdot 111320
+```
 
 `obstacles.json` uses the same frame: every building is a box `x_min, x_max, y_min, y_max` in metres from home, plus a `height`.
 
@@ -201,15 +241,19 @@ $$x = (\lambda-\lambda_0)\cdot 111320\cos\phi_0, \qquad y = (\phi-\phi_0)\cdot 1
 
 Each box grows by a safety margin $m$ (5 m by default). A point $(x, y)$ is a collision if it is inside any grown box:
 
-$$x_{min}-m \le x \le x_{max}+m \quad\text{and}\quad y_{min}-m \le y \le y_{max}+m$$
+```math
+x_{min}-m \le x \le x_{max}+m \quad\text{and}\quad y_{min}-m \le y \le y_{max}+m
+```
 
 ### 6.3 A\*: finding a route around everything
 
-**What it is.** A\* is a graph-search algorithm that finds the cheapest path between two points. Here the "graph" is a 1 m grid laid over the area (with 40 m of padding around the buildings, start and goal). Each free cell connects to its 8 neighbours; straight steps cost 1, diagonal steps cost 1.414, and cells inside a grown building are blocked.
+**What it is.** A\* is a graph-search algorithm that finds the cheapest path between two points. Here the "graph" is a 1 m grid laid over the area (with 40 m of padding around the buildings, start and goal). Each free cell connects to its 8 neighbours; straight steps cost 1, diagonal steps cost $\sqrt{2} \approx 1.414$, and cells inside a grown building are blocked.
 
 **How it works.** It keeps a list of cells to try. At each step it expands the cell with the smallest
 
-$$f(n) = g(n) + h(n)$$
+```math
+f(n) = g(n) + h(n)
+```
 
 where $g(n)$ is the distance travelled from the start to $n$, and $h(n)$ is the straight-line distance from $n$ to the goal. Because $h$ never overestimates the true remaining distance, the first time the goal is reached the path is the shortest possible on the grid. We also forbid squeezing diagonally between two blocked cells, so the route never clips a corner.
 
@@ -221,13 +265,17 @@ where $g(n)$ is the distance travelled from the start to $n$, and $h(n)$ is the 
 
 **What it is.** A B-spline is a smooth curve defined by control points. A cubic one (degree 3) is a weighted sum of the points, where the weights $N_{i,3}(u)$ are basis functions that depend on a parameter $u$ running from 0 to 1:
 
-$$C(u) = \sum_{i=0}^{n} N_{i,3}(u)\,P_i, \qquad N_{i,k}(u) = \frac{u-u_i}{u_{i+k}-u_i}N_{i,k-1}(u) + \frac{u_{i+k+1}-u}{u_{i+k+1}-u_{i+1}}N_{i+1,k-1}(u)$$
+```math
+C(u) = \sum_{i=0}^{n} N_{i,3}(u)\,P_i, \qquad N_{i,k}(u) = \frac{u-u_i}{u_{i+k}-u_i}N_{i,k-1}(u) + \frac{u_{i+k+1}-u}{u_{i+k+1}-u_{i+1}}N_{i+1,k-1}(u)
+```
 
 Cubic means the curve has continuous position, direction and curvature, so a multirotor following it does not stop and turn sharply at each point.
 
 **How we use it.** We add points along each straight piece of the A\* skeleton, at most 8 m apart, so the curve hugs the corners instead of cutting across them. Then SciPy's `splprep(points, s=0, k=3)` builds a cubic spline that passes through every point (`s=0` means no smoothing away from the points). Altitude changes in a straight line with distance travelled $s$ along a path of total length $S$:
 
-$$z(s) = z_0 + \frac{s}{S}(z_1 - z_0)$$
+```math
+z(s) = z_0 + \frac{s}{S}(z_1 - z_0)
+```
 
 **Checking the result.** The spline is sampled at 400 points and tested against the buildings (grown by half the safety margin). If any sample is inside, the margin increases by 2 m and the whole plan repeats, up to 6 times. The accepted curve is then sampled at **35 evenly spaced values of $u$**.
 
@@ -263,7 +311,7 @@ The 35 points become 35 `MissionItem`s (fly-through, 3 m acceptance radius, head
 | `timestamp` | seconds since logging started |
 | `roll, pitch, yaw` | attitude in degrees |
 | `vx, vy, vz` | velocity north, east, down (m/s) |
-| `ax, ay, az` | accelerometer reading in the drone's own frame (m/s²). At rest `az` is about −9.8, because the sensor measures the reaction to gravity, not true acceleration. |
+| `ax, ay, az` | accelerometer reading in the drone's own frame ($\mathrm{m/s^2}$). At rest `az` is about $-9.8\ \mathrm{m/s^2}$, because the sensor measures the reaction to gravity, not true acceleration. |
 | `p, q, r` | angular velocity about roll, pitch and yaw axes (rad/s) |
 
 Our file `flight_data.csv` has **47,035 rows** (median step 0.0208 s, about 48 Hz) covering about 17 minutes. The drone was flown by voice, including roll and pitch sweeps.
@@ -276,62 +324,80 @@ Our file `flight_data.csv` has **47,035 rows** (median step 0.0208 s, about 48 H
 
 **Step 2: build a library of candidate terms.** For every sample, evaluate a table of possible building blocks, for example a constant, each variable, and products of two variables. With variables $(x_1,\dots,x_n)$ and degree 2, the library is
 
-$$\Theta(X) = \begin{bmatrix} 1 & x_1 & \cdots & x_n & x_1^2 & x_1x_2 & \cdots & x_n^2 \end{bmatrix}$$
+```math
+\Theta(X) = \begin{bmatrix} 1 & x_1 & \cdots & x_n & x_1^2 & x_1x_2 & \cdots & x_n^2 \end{bmatrix}
+```
 
 **Step 3: find the few terms that matter.** We assume each state's rate is a sum of a few library terms:
 
-$$\dot{X} \approx \Theta(X)\,\Xi$$
+```math
+\dot{X} \approx \Theta(X)\,\Xi
+```
 
 $\Xi$ is a matrix of coefficients, one column per state. Ordinary least squares would give every term a small nonzero weight. SINDy uses **STLSQ** (sequentially thresholded least squares) to force most to exactly zero:
 
-1. Solve $\Xi = \arg\min \lVert \dot X - \Theta\,\Xi \rVert_2^2 + \alpha\lVert \Xi \rVert_2^2$ (a ridge-regularised least-squares fit; $\alpha = 0.05$).
-2. Set every coefficient with $|\Xi_{ij}| < \lambda$ to zero (λ is the threshold).
+1. Solve $\Xi = \arg\min \lVert \dot X - \Theta \Xi \rVert_2^2 + \alpha\lVert \Xi \rVert_2^2$ (a ridge-regularised least-squares fit; $\alpha = 0.05$).
+2. Set every coefficient with $\lvert \Xi_{ij} \rvert < \lambda$ to zero ($\lambda$ is the threshold).
 3. Refit using only the surviving terms. Repeat until nothing changes.
 
-The result is a short equation you can read. The threshold λ is the main knob: too low keeps noise, too high deletes real terms.
+The result is a short equation you can read. The threshold $\lambda$ is the main knob: too low keeps noise, too high deletes real terms.
 
 ### 7.3 Attempt 1: `fit_sindy.py` (what we ran first)
 
 - Variables: 6 states (roll, pitch, yaw, vx, vy, vz) plus `ax, ay, az` treated as control inputs, degree 2 with interactions. That is a library of 55 terms per equation.
-- Threshold λ = 0.001.
+- Threshold $\lambda = 0.001$.
 
-**Result.** Nearly all 55 terms survive in every equation, with large coefficients (for example `roll' = −9.2 + 4.3·roll + 111·ax + 163·ay + …`). That is a fitted curve, not a discovered law: the threshold was too low to remove anything, and a model with hundreds of terms cannot be read or trusted.
+**Result.** Nearly all 55 terms survive in every equation, with large coefficients, for example
+
+```math
+\dot\phi = -9.2 + 4.3\,\phi + 111\,a_x + 163\,a_y + \cdots
+```
+
+with roll $\phi$ and the accelerometer readings $a_x, a_y$. That is a fitted curve, not a discovered law: the threshold was too low to remove anything, and a model with hundreds of terms cannot be read or trusted.
 
 **One equation that did make sense:**
 
-```
-(vz)' = 9.317 + 0.962·az + (small terms)
+```math
+\dot v_z = 9.317 + 0.962\,a_z + (\text{small terms})
 ```
 
-At hover `az` is about −9.81, so this gives `vz' ≈ 0`. It matches the physical relation "downward acceleration = gravity + accelerometer reading", with 9.3 close to g and 0.96 close to 1. SINDy found physics here because the relationship is strong and simple.
+At hover $a_z \approx -9.81\ \mathrm{m/s^2}$, so this gives $\dot v_z \approx 9.317 - 0.962 \cdot 9.81 \approx -0.12 \approx 0$. It matches the physical relation $\dot v_z = g + a_z$ (downward acceleration equals gravity plus the accelerometer reading), with 9.317 close to $g = 9.81\ \mathrm{m/s^2}$ and 0.962 close to 1. SINDy found physics here because the relationship is strong and simple.
 
 **Two design mistakes in this attempt.**
 - `ax, ay, az` are **measurements**, not inputs. A control input is something we choose (motor thrust, a commanded attitude). Treating a measured output as an input makes the model fit itself.
-- Yaw is a heading angle, not a dynamic variable here, and it wraps from +180° to −180° (2 jumps in our file). It adds no physics and creates fake terms such as `roll' ∝ 0.106·yaw·vx`.
+- Yaw is a heading angle, not a dynamic variable here, and it wraps from $+180^\circ$ to $-180^\circ$ (2 jumps in our file). It adds no physics and creates fake terms such as $\dot\phi \propto 0.106\ \psi v_x$ (yaw $\psi$).
 
 ### 7.4 Attempt 2: `fit_sindy_clean.py` (what we recommend)
 
-- Variables: roll and pitch in radians, and body rates `p, q` in rad/s. No yaw, no accelerometer.
-- Degree 1 (linear), threshold λ = 0.2.
+- Variables: roll $\phi$ and pitch $\theta$ in radians, and body rates $p, q$ in rad/s. No yaw, no accelerometer.
+- Degree 1 (linear), threshold $\lambda = 0.2$.
 - Trained on the first 70 % of the recording and scored on the last 30 % (a time split, not a random one).
 
-```
-(roll)'  =  1.015·p
-(pitch)' =  0.997·q
-(p)'     = −4.039·roll
-(q)'     =  0.676·roll − 2.734·pitch + 0.227·p
+```math
+\begin{aligned}
+\dot\phi &= 1.015\,p \\
+\dot\theta &= 0.997\,q \\
+\dot p &= -4.039\,\phi \\
+\dot q &= 0.676\,\phi - 2.734\,\theta + 0.227\,p
+\end{aligned}
 ```
 
 Only 6 coefficients remain out of 20 possible (5 library terms for each of 4 states).
 
-| State | Held-out one-step R² | Reading |
+| State | Held-out one-step $R^2$ | Reading |
 | --- | --- | --- |
-| roll | 0.964 | Found: the rate of roll is the roll rate, $\dot\phi \approx p$ (coefficient 1.015 ≈ 1). |
-| pitch | 0.974 | Found: $\dot\theta \approx q$ (coefficient 0.997 ≈ 1). |
-| p | 0.26 | Partly: a restoring term $\dot p = -4.04\,\phi$, a spring that pulls roll back to level with natural frequency $\sqrt{4.04}\approx 2.0$ rad/s. |
+| roll | 0.964 | Found: the rate of roll is the roll rate, $\dot\phi \approx p$ (coefficient 1.015 $\approx 1$). |
+| pitch | 0.974 | Found: $\dot\theta \approx q$ (coefficient 0.997 $\approx 1$). |
+| p | 0.26 | Partly: a restoring term $\dot p = -4.04 \phi$, a spring that pulls roll back to level with natural frequency $\sqrt{4.04}\approx 2.0$ rad/s. |
 | q | 0.27 | Partly: restoring terms on pitch and roll, similar in size. |
 
-R² is $1 - \sum(y-\hat y)^2 / \sum(y-\bar y)^2$: 1 is perfect and 0 is no better than predicting the average.
+The score is the coefficient of determination on the held-out 30 %, with measured rates $y_k$, predicted rates $\hat y_k$ and mean $\bar y$:
+
+```math
+R^2 = 1 - \frac{\sum_k (y_k - \hat y_k)^2}{\sum_k (y_k - \bar y)^2}
+```
+
+1 is perfect and 0 is no better than predicting the average.
 
 **How to read this honestly.**
 - The first two results are the standard kinematic relations (for small angles, angle rate equals body rate), recovered from data alone with coefficients within 2 % of the true value of 1.
@@ -400,10 +466,10 @@ PX4 stores the mission and how far it got. QGC reads it on connect and offers to
 | Stage | Files | What it did | Why we moved on |
 | --- | --- | --- | --- |
 | 1. Connect | `testing.py`, `voice_control.py` | Connect to PX4; voice for take off, land, hold. | Needed more commands and a separate port for each program (fixed with `mavlink start -u 14535 -o 14530`). |
-| 2. Full command set | `voice_control_v2.py` | Arm, disarm, move pulses (Offboard velocity), altitude steps, orbit, roll and pitch sweeps, saved points, straight-line "go to". | Straight lines flew over buildings (`live_test_images/01_straight_line_goto.png`). |
+| 2. Full command set | `voice_control_v2.py` | Arm, disarm, move pulses (Offboard velocity), altitude steps, orbit, roll and pitch sweeps, saved points, straight-line "go to". | Straight lines flew over buildings ([`straight line goto.png`](live_test_images/live_test_images/straight%20line%20goto.png)). |
 | 3. Planning | `voice_controller_v3_newlogic.py`, `path_planner.py` | B-spline route around buildings from `obstacles.json`; operation log. | Mission list showed stale routes; start was denied; buildings looked wrong. |
 | 4. QGC overlay | `voice_controller_v4_gemini.py` | Tried drawing the buildings in QGC through the geofence upload. | Triggered geofence failsafes (§10). |
-| 5. Better planner | `path_planner_v3.py`, `voice_fixes_patch.py` | A\* around all buildings, home-anchored frame, 35-item missions, saved points kept between runs, robust start. | Current state. |
+| 5. Better planner | `path_planner_v3.py`, `voice_fixes_patch.py` | A\* around all buildings, home-anchored frame, 35-item missions, saved points kept between runs, robust start. | Newest code; tested offline, not yet merged into v4 (§3). |
 
 <img width="1388" height="868" alt="image" src="https://github.com/user-attachments/assets/f25796c1-fa6c-4002-9475-c9ad70eabef0" />
 
@@ -415,7 +481,7 @@ In parallel we logged data (`data_logger.py`) and tried SINDy (`fit_sindy.py`, t
 
 ## 10. Known issues and problems you may hit
 
-Each of these cost us time. The first group is fixed or has a safe workaround; the second group is still open.
+Each of these cost us time. The first group is fixed or has a safe workaround; the second group is still open. Several fixes in the first group are in `voice_fixes_patch.py` and `path_planner_v3.py`, which are not yet merged into `voice_controller_v4_gemini.py` (§3).
 
 ### Fixed or avoidable
 
@@ -440,7 +506,7 @@ Each of these cost us time. The first group is fixed or has a safe workaround; t
 | **Substring matching can fire on the wrong command.** | `"arm" in text` also matches words like "alarm"; `"land"` matches "island". | Whole-word matching. |
 | **`data_logger.py` overwrites `flight_data.csv` every run** (it opens the file in write mode). | A second run erases the previous recording. | Rename or copy the file after each session, or change the file name to include a timestamp. |
 | **`data_logger.py` kills every `mavsdk_server` process** at start and exit (`pkill -9`). | If the voice controller is already running, the logger kills its backend and voice control stops responding. | Start the logger **first**. |
-| **Buildings in `obstacles.json` are hand-written boxes.** | They are not the real Gazebo building positions, so the planner avoids imaginary buildings. See the orange boxes in `live_test_images/02_bspline_mission_flying.png`. | Measure real building corners (QGC map or the Gazebo world file) and enter them in metres from home. |
+| **Buildings in `obstacles.json` are hand-written boxes.** | They are not the real Gazebo building positions, so the planner avoids imaginary buildings. See the orange boxes in [`b-spline mission.png`](live_test_images/live_test_images/b-spline%20mission.png). | Measure real building corners (QGC map or the Gazebo world file) and enter them in metres from home. |
 | **Sweep altitude drift.** | Attitude sweeps use a fixed thrust guess (`HOVER_THRUST_GUESS = 0.5`), so the drone climbs or sinks a little during a 6 s sweep. | Keep sweeps short, or estimate the real hover thrust. |
 | **QGC draws straight lines between waypoints.** | A downloaded route is only as smooth as its point spacing. | Keep points dense, or save the voice-generated plan rather than thinning it. |
 
@@ -477,8 +543,25 @@ Included so that nobody assumes these work:
 
 ## 13. Credits and references
 
-- PX4 Autopilot and PX4 SITL, Gazebo, QGroundControl, MAVSDK-Python, Vosk, SciPy (`splprep`/`splev`), PySINDy.
-- S. L. Brunton, J. L. Proctor, J. N. Kutz, *Discovering governing equations from data by sparse identification of nonlinear dynamical systems*, PNAS 2016 (SINDy).
-- P. E. Hart, N. J. Nilsson, B. Raphael, *A Formal Basis for the Heuristic Determination of Minimum Cost Paths*, 1968 (A\*).
-- C. de Boor, *A Practical Guide to Splines*, 1978 (B-splines).
-- Parts of the code and debugging were developed with help from AI assistants (Claude and Gemini); all code was run and tested by the authors in simulation.
+Software used: PX4 Autopilot (SITL), Gazebo, QGroundControl, MAVSDK-Python, Vosk, SciPy (`splprep`/`splev`), PySINDy. Every DOI and link was checked on 2026-10-24.
+
+1. L. Meier, D. Honegger, and M. Pollefeys, "PX4: A node-based multithreaded open source robotics framework for deeply embedded platforms," in *Proc. IEEE Int. Conf. Robotics and Automation (ICRA)*, 2015, pp. 6235–6240. doi: [10.1109/ICRA.2015.7140074](https://doi.org/10.1109/ICRA.2015.7140074)
+2. PX4 Autopilot, "PX4 user and developer guide: Gazebo simulation." [Online]. Available: <https://docs.px4.io/main/en/sim_gazebo_gz/>
+3. N. Koenig and A. Howard, "Design and use paradigms for Gazebo, an open-source multi-robot simulator," in *Proc. IEEE/RSJ Int. Conf. Intelligent Robots and Systems (IROS)*, 2004, vol. 3, pp. 2149–2154. doi: [10.1109/IROS.2004.1389727](https://doi.org/10.1109/IROS.2004.1389727)
+4. A. Koubâa, A. Allouch, M. Alajlan, Y. Javed, A. Belghith, and M. Khalgui, "Micro Air Vehicle Link (MAVLink) in a nutshell: A survey," *IEEE Access*, vol. 7, pp. 87658–87680, 2019. doi: [10.1109/ACCESS.2019.2924410](https://doi.org/10.1109/ACCESS.2019.2924410)
+5. MAVSDK project, "MAVSDK documentation (Python)." [Online]. Available: <https://mavsdk.mavlink.io>
+6. Dronecode, "QGroundControl user guide." [Online]. Available: <https://docs.qgroundcontrol.com>
+7. D. Povey *et al.*, "The Kaldi speech recognition toolkit," in *Proc. IEEE Workshop on Automatic Speech Recognition and Understanding (ASRU)*, Hawaii, USA, 2011.
+8. Alpha Cephei, "Vosk offline speech recognition toolkit" (model `vosk-model-small-en-us-0.15`). [Online]. Available: <https://alphacephei.com/vosk/>
+9. P. E. Hart, N. J. Nilsson, and B. Raphael, "A formal basis for the heuristic determination of minimum cost paths," *IEEE Trans. Syst. Sci. Cybern.*, vol. 4, no. 2, pp. 100–107, 1968. doi: [10.1109/TSSC.1968.300136](https://doi.org/10.1109/TSSC.1968.300136)
+10. C. de Boor, *A Practical Guide to Splines*. New York, NY, USA: Springer-Verlag, 1978.
+11. S. L. Brunton, J. L. Proctor, and J. N. Kutz, "Discovering governing equations from data by sparse identification of nonlinear dynamical systems," *Proc. Natl. Acad. Sci. USA*, vol. 113, no. 15, pp. 3932–3937, 2016. doi: [10.1073/pnas.1517384113](https://doi.org/10.1073/pnas.1517384113)
+12. B. M. de Silva, K. Champion, M. Quade, J.-C. Loiseau, J. N. Kutz, and S. L. Brunton, "PySINDy: A Python package for the sparse identification of nonlinear dynamical systems from data," *J. Open Source Softw.*, vol. 5, no. 49, p. 2104, 2020. doi: [10.21105/joss.02104](https://doi.org/10.21105/joss.02104)
+13. A. A. Kaptanoglu *et al.*, "PySINDy: A comprehensive Python package for robust sparse system identification," *J. Open Source Softw.*, vol. 7, no. 69, p. 3994, 2022. doi: [10.21105/joss.03994](https://doi.org/10.21105/joss.03994)
+14. A. Savitzky and M. J. E. Golay, "Smoothing and differentiation of data by simplified least squares procedures," *Anal. Chem.*, vol. 36, no. 8, pp. 1627–1639, 1964. doi: [10.1021/ac60214a047](https://doi.org/10.1021/ac60214a047)
+15. C. R. Harris *et al.*, "Array programming with NumPy," *Nature*, vol. 585, pp. 357–362, 2020. doi: [10.1038/s41586-020-2649-2](https://doi.org/10.1038/s41586-020-2649-2)
+16. P. Virtanen *et al.*, "SciPy 1.0: Fundamental algorithms for scientific computing in Python," *Nat. Methods*, vol. 17, pp. 261–272, 2020. doi: [10.1038/s41592-019-0686-2](https://doi.org/10.1038/s41592-019-0686-2)
+17. W. McKinney, "Data structures for statistical computing in Python," in *Proc. 9th Python in Science Conf. (SciPy)*, 2010, pp. 56–61. doi: [10.25080/Majora-92bf1922-00a](https://doi.org/10.25080/Majora-92bf1922-00a)
+18. J. D. Hunter, "Matplotlib: A 2D graphics environment," *Comput. Sci. Eng.*, vol. 9, no. 3, pp. 90–95, 2007. doi: [10.1109/MCSE.2007.55](https://doi.org/10.1109/MCSE.2007.55)
+
+Parts of the code and debugging were developed with help from AI assistants (Claude and Gemini); all code was run and tested by the authors in simulation.
