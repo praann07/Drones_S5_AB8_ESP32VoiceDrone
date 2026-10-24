@@ -88,7 +88,7 @@ Everything is simulation. No hardware drone was flown.
 
 ## 2. Abstract
 
-This project studies voice control of a quadrotor in simulation. In every implementation a person speaks or types a short command, the software converts the transcript into a flight intent, checks the intent against safety rules (obstacles, map limits, flight state), and a simulated drone carries it out. The five branches differ in the simulator and in the question they study. The **PyBullet** branch treats the command and safety layer as the product: a parser that repairs common mis-transcriptions, a kinematic flight model that flies measured distances to within centimetres, and a ray-cast braking law that stops the drone 0.40 m before an obstacle's safety zone (190 randomised runs, no zone entered); its 145 headless unit tests were re-run for this README. The **MuJoCo** branch identifies the drone's rotational dynamics from open-loop flight data with SINDy (sparse identification of nonlinear dynamics), keeps 44 of 156 candidate coefficients, reports a held-out R² of 0.9946, and calculates the gains of a quaternion attitude controller from the learned model; the drone then flies spoken "go to <building>" commands on a 1:10 model of the Amrita Coimbatore campus. The **PX4 + Gazebo** branch puts offline (Vosk) voice commands on top of the PX4 autopilot, plans spline missions around buildings and fits SINDy to logged telemetry, honestly reporting that the fit describes PX4's closed loop rather than the bare airframe. The **MATLAB** branch provides a seven-command flight lab with Windows speech recognition, a hard obstacle-stop rule and telemetry plots. The archived **first attempt** contains a pure-Python simulator whose identified models are shown to diverge, which motivated the more careful identification on the MuJoCo branch.
+This project studies voice control of a quadrotor in simulation. In every implementation a person speaks or types a short command, the software converts the transcript into a flight intent, checks the intent against safety rules (obstacles, map limits, flight state), and a simulated drone carries it out. The five branches differ in the simulator and in the question they study. The **PyBullet** branch treats the command and safety layer as the product: a parser that repairs common mis-transcriptions, a kinematic flight model that flies measured distances to within centimetres, and a ray-cast braking law that stops the drone 0.40 m before an obstacle's safety zone (190 randomised runs, no zone entered); its 145 headless unit tests were re-run for this README. The **MuJoCo** branch identifies the drone's rotational dynamics from open-loop flight data with SINDy (sparse identification of nonlinear dynamics), keeps 44 of 156 candidate coefficients, reports a held-out $R^2$ of 0.9946, and calculates the gains of a quaternion attitude controller from the learned model; the drone then flies spoken "go to <building>" commands on a 1:10 model of the Amrita Coimbatore campus. The **PX4 + Gazebo** branch puts offline (Vosk) voice commands on top of the PX4 autopilot, plans spline missions around buildings and fits SINDy to logged telemetry, honestly reporting that the fit describes PX4's closed loop rather than the bare airframe. The **MATLAB** branch provides a seven-command flight lab with Windows speech recognition, a hard obstacle-stop rule and telemetry plots. The archived **first attempt** contains a pure-Python simulator whose identified models are shown to diverge, which motivated the more careful identification on the MuJoCo branch.
 
 ---
 
@@ -124,11 +124,11 @@ Design and evaluate, in simulation, a quadrotor that a person can fly by voice, 
 Each contribution below is checked against the code on its branch; the numbers are labelled in [Section 14](#14-results-and-demonstrations).
 
 1. **A forgiving but strict speech-to-command parser** (`Drone_pybullet`). It takes the first of Google's top three guesses that is a command, joins split words ("for word" → forward), repairs one-letter slips with a similarity cutoff of 0.85, matches whole words only (so "island" never means "land"), and reads amounts in digits or words, in metres or feet, degrees or radians.
-2. **Exact moves and a provably achievable stop** (`Drone_pybullet`). Measured moves end within 1.6 cm and 0.13°. A ray cast along the direction of travel and a braking law $v_{allowed} = \sqrt{2 a_b (t_{hit} - d_{stop})}$ stop the drone exactly 0.40 m before an obstacle's safety zone; the computed and measured stop positions agree (x = 0.83 m).
+2. **Exact moves and a provably achievable stop** (`Drone_pybullet`). Measured moves end within 1.6 cm and 0.13°. A ray cast along the direction of travel and a braking law $v_{allowed} = \sqrt{2 a_b (t_{hit} - d_{stop})}$ stop the drone exactly 0.40 m before an obstacle's safety zone; the computed and measured stop positions agree ($x = 0.83$ m).
 3. **A controller computed from a learned model** (`drone_mujoco`). SINDy identifies the rotational dynamics from open-loop excitation data with a 26-term physics-motivated library; the attitude gains are computed from the identified hover linearisation ($K_q = 2\omega_n^2/b$, $K_\omega = (2\zeta\omega_n + a)/b$) with only the settling time and damping chosen by hand.
 4. **Voice navigation on a real campus map** (`drone_mujoco`). 31 named buildings of the Amrita Coimbatore campus (from OpenStreetMap) are addressable by voice; A\* on a 0.25 m occupancy grid with a 0.45 m hard wall clearance plans the route, and a smooth curve is flown through it.
 5. **Voice commands on a real autopilot** (`drone_gazebo`). Vosk speech drives PX4 through MAVSDK (take-off, offboard velocity pulses, saved points, B-spline missions), with a documented port layout that lets the logger, the voice controller and QGroundControl run together.
-6. **Honest identification results.** The Gazebo branch shows that SINDy on logged PX4 telemetry recovers the kinematic relations (roll rate ≈ p, coefficient 1.015) but describes the closed loop, not the airframe; the archived first attempt shows identified models that diverge when run forward. Both are stated as limits rather than hidden.
+6. **Honest identification results.** The Gazebo branch shows that SINDy on logged PX4 telemetry recovers the kinematic relations ($\dot\phi pprox 1.015 p$) but describes the closed loop, not the airframe; the archived first attempt shows identified models that diverge when run forward. Both are stated as limits rather than hidden.
 7. **Visible, repeatable evidence.** Live browser graphs and CSV logs (`Drone_pybullet`), a results folder with the scripts that produced it, telemetry export and analysis plots (`Drones_Matlab`), and a scripted rebuild of every MuJoCo result.
 
 ---
@@ -178,7 +178,7 @@ How each branch fills in the stages:
 | Stage | `Drone_pybullet` | `drone_mujoco` | `drone_gazebo` | `Drones_Matlab` | `drone_esp32_sim` |
 |---|---|---|---|---|---|
 | Speech recognition | Google Web Speech (online), top 3 guesses | Vosk (offline), grammar restricted to the command words | Vosk (offline) | Windows `System.Speech` (offline), grammar of 7 phrases | Vosk (offline) |
-| Command matching | Whole words, split-word joining, `difflib` repair ≥ 0.85, amounts and units | Synonyms, then `difflib` ≥ 0.7 (≥ 0.8 for short words); fuzzy place matcher | Substring and prefix tests | Exact phrase | Keyword substring tests |
+| Command matching | Whole words, split-word joining, `difflib` repair $\ge 0.85$, amounts and units | Synonyms, then `difflib` $\ge 0.7$ ($\ge 0.8$ for short words); fuzzy place matcher | Substring and prefix tests | Exact phrase | Keyword substring tests |
 | Safety | Flight states, ray cast + braking law, geofence, axis-wise collision net | Target clipping, map edge, A\* clearance 0.45 m | PX4 failsafes, inflated building boxes | Segment-to-circle stop rule, geofence, battery | Geofence, battery, link loss |
 | Motion | Kinematic velocity model, measured moves | Trapezoidal, quintic Bézier and cruise trajectories | PX4 missions and offboard velocity | Cascaded PD to acceleration | Cascaded PID |
 | Dynamics | Kinematic (no thrust) | Full 6-DOF rigid body, 500 Hz | PX4 SITL + Gazebo x500 | Simplified tilt-to-acceleration model, 50 Hz | Euler-angle 6-DOF model, 250 Hz |
@@ -290,7 +290,7 @@ This branch treats the **command and safety layer** as the product. The flight m
 #### Implementation
 
 - **Main loop** (`drone_core.run`): reads queued voice, typed and keyboard intents; applies them to the `DroneController`; steps the kinematic model; updates the PyBullet bodies, camera, labels and overlays; records telemetry and dashboard samples. Target frame time 1/120 s.
-- **Flight model** (`DroneController`): position, velocity and heading. Horizontal speed 1.5 m/s, vertical 1.0 m/s, acceleration limit 3 m/s², yaw rate 45°/s, take-off height 2.0 m, ceiling 8.0 m, world limit ±12 m.
+- **Flight model** (`DroneController`): position, velocity and heading. Horizontal speed 1.5 m/s, vertical 1.0 m/s, acceleration limit $3\ \mathrm{m/s^2}$, yaw rate 45°/s, take-off height 2.0 m, ceiling 8.0 m, world limit $\pm 12$ m.
 - **Obstacle logic** (`ObstacleAvoider`): each obstacle box is grown by the drone's footprint (radius 1.32 m incl. propeller tips) plus 0.25 m clearance; a ray along the direction of travel (2.0 m range) is tested against every grown box; a braking law limits the speed; a per-axis collision check is the last safety net.
 - **Voice** (`VoiceListener`): one thread only records (phrase ends after 0.6 s of silence); a worker thread sends each recording to Google and asks for ranked alternatives, so a command spoken during transcription is queued (up to 6), not lost.
 - **Live graphs** (`dashboard.py`): stores at most 10 samples per second in memory and serves `dashboard.html` and a JSON endpoint on `127.0.0.1` only; the page redraws five times a second.
@@ -311,11 +311,11 @@ This branch treats the **command and safety layer** as the product. The flight m
 
 | Algorithm | Equation or rule | Details |
 |---|---|---|
-| Spelling repair | $r(a,b) = \dfrac{2M}{\lvert a\rvert + \lvert b\rvert}$, repair a word of ≥ 5 letters if $r \ge 0.85$ | [10.2](#102-command-matching) |
+| Spelling repair | $r(a,b) = \dfrac{2M}{\lvert a\rvert + \lvert b\rvert}$, repair a word of $\ge 5$ letters if $r \ge 0.85$ | [10.2](#102-command-matching) |
 | Kinematic flight model | $v \leftarrow v + \mathrm{clip}(v_{want} - v,\ \pm a \Delta t)$, $\ p \leftarrow p + v \Delta t$ | [10.3](#103-flight-models) |
 | Measured move | speed $= \mathrm{clip}(2r,\ 0.15,\ v_{max})$, finished when $r \le 0.02$ m | [10.3](#103-flight-models) |
 | Ray against a box | slab method: $t_{near} = \max_i \min(t_{1i}, t_{2i})$, $t_{far} = \min_i \max(t_{1i}, t_{2i})$ | [10.4](#104-obstacle-detection-and-braking) |
-| Braking law | $v_{allowed} = \sqrt{2 a_b (t_{hit} - d_{stop})}$, $a_b = 2$ m/s², $d_{stop} = 0.4$ m | [10.4](#104-obstacle-detection-and-braking) |
+| Braking law | $v_{allowed} = \sqrt{2 a_b (t_{hit} - d_{stop})}$, $a_b = 2\ \mathrm{m/s^2}$, $d_{stop} = 0.4\ \mathrm{m}$ | [10.4](#104-obstacle-detection-and-braking) |
 
 #### Tools
 
@@ -401,7 +401,7 @@ flowchart TD
 
 - **Plant:** a 6-DOF MuJoCo quadrotor, 1.0 kg, arm 0.15 m, X configuration, drag as a generalised force, rotor thrust limited to 6 N, simulated at 500 Hz ($\Delta t = 0.002$ s). Frames are ENU (world) and FLU (body); quaternions are Hamilton, scalar first.
 - **Sensing:** the controller reads the model's declared IMU sensors (position, attitude, body velocity rotated to the world, gyro), not the simulator's internal state. The sensors are ideal unless noise is injected for the robustness study.
-- **Selection rule:** sparsity is chosen by a parsimony rule on validation data, not by R² alone; the chosen model is frozen to a file, and the flight controller loads exactly that file.
+- **Selection rule:** sparsity is chosen by a parsimony rule on validation data, not by $R^2$ alone; the chosen model is frozen to a file, and the flight controller loads exactly that file.
 
 #### Important files
 
@@ -426,7 +426,7 @@ flowchart TD
 | Gains from the model | per axis $\dot\omega = a \omega + b \tau$; $\omega_n = \dfrac{4}{\zeta T_s}$, $K_q = \dfrac{2\omega_n^2}{b}$, $K_\omega = \dfrac{2\zeta\omega_n + a}{b}$, with $\zeta = 0.7$, $T_s = 0.5$ s | [10.8](#108-cascaded-control) |
 | Quaternion attitude law | $q_e = q_{ref} \otimes q^{*}$, $\ \tau = -K_q \mathrm{sign}(q_{e,w}) q_{e,vec} - K_\omega(\omega - \omega_{des})$ | [10.8](#108-cascaded-control) |
 | A\* on an occupancy grid | $f(n) = g(n) + h(n)$, 0.25 m cells, wall-distance penalty, 0.45 m hard clearance | [10.9](#109-path-planning) |
-| Stopping distance | $d = v^2 / (2a_{max})$: from 1.0 m/s at 1.0 m/s² this is 0.50 m, as measured | [10.4](#104-obstacle-detection-and-braking) |
+| Stopping distance | $d = v^2 / (2a_{max})$: from 1.0 m/s at $1.0\ \mathrm{m/s^2}$ this is 0.50 m, as measured | [10.4](#104-obstacle-detection-and-braking) |
 
 #### Tools
 
@@ -479,7 +479,7 @@ The other branches write their own flight controller. This branch asks how voice
 | Basic flight | arm, disarm, take off, land, hold, return home |
 | Saved places | "point `<name>`" stores the current position under a name |
 | Missions around buildings | "fly to `<name>`" plans a route around the boxes in `obstacles.json`, uploads it to PX4 as a 35-item mission and starts it |
-| Offboard moves | Velocity pulses (2 m/s for 2 s), altitude steps of 2 m, a 10 m orbit, and ±10° roll or pitch sweeps at 0.5 Hz used to excite the drone for identification |
+| Offboard moves | Velocity pulses (2 m/s for 2 s), altitude steps of 2 m, a 10 m orbit, and $\pm 10^\circ$ roll or pitch sweeps at 0.5 Hz used to excite the drone for identification |
 | Ground station | QGroundControl shows the drone and the mission |
 | Data logging and SINDy | `data_logger.py` records attitude, NED velocity, accelerometer and gyro at about 48 Hz; `fit_sindy_clean.py` fits SINDy with a time-ordered train/test split |
 
@@ -663,7 +663,7 @@ The project began as a plan for a real ESP32-S3 "LiteWing" drone flown by voice 
 #### Features and implementation
 
 - **Physics** (`physics.py`): Euler-angle 6-DOF model at 250 Hz ($\Delta t = 0.004$ s), 1.0 kg, 0.2 m arms, 4 N per motor, linear drag, wind with turbulence and gusts, simulated GPS, barometer, magnetometer and gyro noise with low-pass filters, battery drain.
-- **Control** (`controller.py`): cascaded loops: position P (0.9) → desired velocity (≤ 3 m/s) → tilt (≤ 0.35 rad) → attitude P (7.0) → rate P (0.20) → motor mixing; altitude PID (2.4, 0.18, 1.5).
+- **Control** (`controller.py`): cascaded loops: position P (0.9) → desired velocity ($\le 3$ m/s) → tilt ($\le 0.35$ rad) → attitude P (7.0) → rate P (0.20) → motor mixing; altitude PID (2.4, 0.18, 1.5).
 - **Ground station** (`main.py`, `dashboard.py`): missions A → B → C → D → HOME, go-to point, latitude/longitude targets, orbit, geofence (160 m), battery and link-loss failsafes, Pygame map with tiles, text-to-speech announcements.
 - **Voice** (`voice.py`, `commands.py`): Vosk offline speech and a keyword parser with hand-listed mishearings ("you cough" → take off).
 - **Identification** (`data_logger.py`, `sindy_model.py`, `dmdc_model.py`, `data_driven_analysis.py`): 250 Hz telemetry, a 38-term SINDy library with STLSQ, DMDc with SVD truncation, and comparison plots.
@@ -672,8 +672,8 @@ The project began as a plan for a real ESP32-S3 "LiteWing" drone flown by voice 
 
 | Issue | Evidence |
 |---|---|
-| The identified models diverge when run forward | In `data_driven_results/`, SINDy's rates reach the ±15 rad/s clamp within about 4 s and DMDc's altitude drifts to about 2000 m; DMDc has an eigenvalue of 1.0006 (outside the unit circle) |
-| Yaw is not unwrapped before fitting | `yaw_deg` is logged in 0 to 360°; the yaw equation's R² is 0.0016 |
+| The identified models diverge when run forward | In `data_driven_results/`, SINDy's rates reach the $\pm 15$ rad/s clamp within about 4 s and DMDc's altitude drifts to about 2000 m; DMDc has an eigenvalue of 1.0006 (outside the unit circle) |
+| Yaw is not unwrapped before fitting | `yaw_deg` is logged in 0 to 360°; the yaw equation's $R^2$ is 0.0016 |
 | The sonification tests cannot pass | The 17 tests import four functions that `sonification.py` does not define |
 | Wind acts in the wrong direction | With noise switched off, a wind vector pointing north pushes the drone east |
 | Missing dependencies | `requirements.txt` lacks pandas, matplotlib and scipy |
@@ -755,7 +755,7 @@ return not recognised                           # nothing is guessed
 
 | Branch | Model | Equations |
 |---|---|---|
-| `Drone_pybullet` | Kinematic, per axis | $v \leftarrow v + \mathrm{clip}(v_{want} - v,\ -a\Delta t,\ a\Delta t)$, $\ p \leftarrow p + v\Delta t$, with $a = 3$ m/s²; wanted velocity rotated from the body frame by the heading $\psi$: $v_x = f\cos\psi - l\sin\psi$, $v_y = f\sin\psi + l\cos\psi$ |
+| `Drone_pybullet` | Kinematic, per axis | $v \leftarrow v + \mathrm{clip}(v_{want} - v,\ -a\Delta t,\ a\Delta t)$, $\ p \leftarrow p + v\Delta t$, with $a = 3\ \mathrm{m/s^2}$; wanted velocity rotated from the body frame by the heading $\psi$: $v_x = f\cos\psi - l\sin\psi$, $v_y = f\sin\psi + l\cos\psi$ |
 | `drone_mujoco` | Full 6-DOF rigid body in MuJoCo | $m\ddot p = R(q)[0,0,T]^\top - mg\hat z$; $\ I\dot\omega = M u - \omega \times (I\omega) - c \omega$ |
 | `drone_gazebo` | PX4 SITL with the Gazebo x500 model | Provided by Gazebo and PX4 |
 | `Drones_Matlab` | Simplified: acceleration follows tilt | $a_x = -g\tan\theta$, $a_y = g\tan\phi$, plus wind and $-0.055 v\lvert v\rvert$ drag |
@@ -793,10 +793,10 @@ every frame:
     move one axis at a time; refuse any step that would enter an obstacle   # safety net
 ```
 
-Worked check: the first tower's face is at x = 2.8 m, its zone face at 2.8 − 1.57 = 1.23 m, so the drone should stop at 1.23 − 0.40 = 0.83 m. The measured stop position is 0.83 m.
+Worked check: the first tower's face is at $x = 2.8$ m and its zone face at $x = 2.8 - 1.57 = 1.23$ m, so the drone should stop at $x = 1.23 - 0.40 = 0.83$ m. The measured stop position is $x = 0.83$ m.
 
 - **Segment-to-circle rule** (`Drones_Matlab`): for a step from $p$ to $p + s$, the closest point to an obstacle centre $c$ is $p + \tau s$ with $\tau = \mathrm{clip}\big((c - p)\cdot s / (s\cdot s), 0, 1\big)$; the step is refused if that point is within the obstacle radius + 1.65 m.
-- **Stopping on command** (`drone_mujoco`): "stop" plans a braking trajectory at the planner's 1.0 m/s² limit, so from 1.0 m/s the drone rests after $1.0^2/(2\cdot 1.0) = 0.5$ m.
+- **Stopping on command** (`drone_mujoco`): "stop" plans a braking trajectory at the planner's $1.0\ \mathrm{m/s^2}$ limit, so from 1.0 m/s the drone rests after $1.0^2/(2\cdot 1.0) = 0.5$ m.
 
 **Why.** A recognised command is only a request. Planning the stop from the braking distance, instead of reacting at contact, lets the drone slow down exactly when it must and never enter the zone.
 
@@ -865,7 +865,7 @@ computed with a (truncated) singular value decomposition. The eigenvalues of $A$
 \tau = -K_q\,\mathrm{sign}(q_{e,w})\,q_{e,vec} - K_\omega(\omega - \omega_{des})
 ```
 
-- **Gains from the identified model:** near hover each axis of the SINDy model reads $\dot\omega = a \omega + b \tau$ ($a < 0$ is $-$drag/inertia, $b$ is 1/inertia). With $\tau = -K_p e - K_d \dot e$ the closed loop is $\ddot e + (bK_d - a)\dot e + bK_p e = 0$; matching $s^2 + 2\zeta\omega_n s + \omega_n^2$ and converting to the quaternion convention ($K_q = 2K_p$) gives
+- **Gains from the identified model:** near hover each axis of the SINDy model reads $\dot\omega = a \omega + b \tau$ ($a < 0$ is minus drag divided by inertia, $b$ is 1/inertia). With $\tau = -K_p e - K_d \dot e$ the closed loop is $\ddot e + (bK_d - a)\dot e + bK_p e = 0$; matching $s^2 + 2\zeta\omega_n s + \omega_n^2$ and converting to the quaternion convention ($K_q = 2K_p$) gives
 
 ```math
 \omega_n = \frac{4}{\zeta T_s}, \qquad K_q = \frac{2\omega_n^2}{b}, \qquad K_\omega = \frac{2\zeta\omega_n + a}{b}
@@ -897,7 +897,7 @@ while open is not empty:
 
    MuJoCo uses 0.25 m cells, forbids cells closer than 0.45 m to a wall and adds a penalty near walls, so routes keep to the middle of open space; buildings lower than the flight altitude can be flown over. The Gazebo v3 planner uses 1 m cells around buildings inflated by 5 m and keeps only the corners where line of sight is lost.
 - **Cubic B-spline** (`drone_gazebo`): $C(u) = \sum_i N_{i,3}(u) P_i$ through the route points (SciPy `splprep`, `s=0`, `k=3`), giving continuous position, direction and curvature; the curve is sampled and checked against the buildings.
-- **Quintic Bézier** (`drone_mujoco/04_control/trajectory.py`): a degree-5 curve per leg whose position, velocity and acceleration match at the joins, so chained commands flow into each other; turns slow down to keep the sideways acceleration below 0.8 m/s².
+- **Quintic Bézier** (`drone_mujoco/04_control/trajectory.py`): a degree-5 curve per leg whose position, velocity and acceleration match at the joins, so chained commands flow into each other; turns slow down to keep the sideways acceleration below $0.8\ \mathrm{m/s^2}$.
 
 **Why.** A straight line to a building flies through other buildings; A\* finds a route around them, and smoothing removes the stop-and-turn corners that a multirotor cannot follow at speed.
 
@@ -915,7 +915,7 @@ while open is not empty:
 
 | Metric | Definition | Meaning | Used in |
 |---|---|---|---|
-| R² | $1 - \dfrac{\sum (y - \hat y)^2}{\sum (y - \bar y)^2}$ | Fraction of the variation explained; 1 is perfect, 0 is no better than the mean | `drone_mujoco`, `drone_gazebo`, `drone_esp32_sim` |
+| $R^2$ | $1 - \dfrac{\sum (y - \hat y)^2}{\sum (y - \bar y)^2}$ | Fraction of the variation explained; 1 is perfect, 0 is no better than the mean | `drone_mujoco`, `drone_gazebo`, `drone_esp32_sim` |
 | NRMSE | $\dfrac{\mathrm{RMS}(\hat y - y)}{\mathrm{RMS}(\Delta y)}$ | One-step error relative to the change per step; a model that predicts no change scores exactly 1.0 | `drone_mujoco` |
 | RMSE of the 3D error | $\sqrt{\tfrac{1}{N}\sum \lVert p_{target} - p\rVert^2}$ | Tracking accuracy over a flight | `Drones_Matlab` |
 | Settling time | Time until the error stays inside a band | Controller speed | `drone_mujoco` |
@@ -993,7 +993,7 @@ while open is not empty:
 | `drone_mujoco` | Held-out validation of SINDy and DMDc, 11 s rollouts, sparsity and noise ablations | 7 long rollouts | 0 of 7 diverged | Branch measurement |
 | `drone_mujoco` | Voice trials, chained commands, manoeuvre gauntlet, robustness sweeps | 24 + 5 + 67 | 24/24, 5/5, 67/67 | Branch measurement |
 | `drone_gazebo` | Flights in PX4 SITL; offline planner check on two layouts | — | Planner: all 35 points outside the buildings (path lengths 296 m and 222 m) | Not reproducible here |
-| `drone_gazebo` | SINDy on `flight_data.csv` | 47,035 rows | Reproduced exactly: same 6 terms and coefficients, held-out R² 0.964, 0.974, 0.262, 0.273 (roll, pitch, p, q) | **Re-run** (`fit_sindy_clean.py`, PySINDy 2.1.0) |
+| `drone_gazebo` | SINDy on `flight_data.csv` | 47,035 rows | Reproduced exactly: same 6 terms and coefficients, held-out $R^2$ 0.964, 0.974, 0.262, 0.273 (roll, pitch, p, q) | **Re-run** (`fit_sindy_clean.py`, PySINDy 2.1.0) |
 | `Drones_Matlab` | Manual flights, CSV export, analysis figures | — | Six analysis plots supplied | Not reproducible here |
 | `drone_esp32_sim` | Headless scripted mission (`main.py --headless`) | 7 phases | All 7 phases pass (take-off, four waypoints, return home, landing; 56 s simulated) | **Re-run** |
 | `drone_esp32_sim` | pytest (`drone_sim/tests/test_sonification.py`) | 17 tests | Cannot pass: they import four functions that do not exist | Checked in the code |
@@ -1016,7 +1016,7 @@ Evidence in the repository: [`Drone_pybullet` test output](https://github.com/pr
 | Take-off to 2 m | 2.78 s |
 | "forward 3 meters" | 3.25 s, final error 1.6 cm |
 | "rotate 90 degrees" | 2.9 s, final error 0.13° |
-| Stop before an obstacle | Holds at x = 0.83 m, 0.40 m from the safety zone, as the braking law predicts; peak deceleration 3.0 m/s²; safety net used 0 times |
+| Stop before an obstacle | Holds at $x = 0.83$ m, 0.40 m from the safety zone, as the braking law predicts; peak deceleration $3.0\ \mathrm{m/s^2}$; safety net used 0 times |
 | Randomised safety check | 190 runs, 0 safety-zone entries |
 | Return home and land | Open ground 10.05 s, 9.6 cm from the pad centre; through the towers 13.1 s, 9.5 cm |
 | Main loop | About 110 frames per second, 2.6 ms of work per frame |
@@ -1033,13 +1033,13 @@ Evidence in the repository: [`Drone_pybullet` test output](https://github.com/pr
 
 | Stage | Result |
 |---|---|
-| Identification | SINDy held-out derivative R² 0.9946, one-step NRMSE 0.0786, 44 of 156 coefficients; DMDc R² 0.9926 near hover only |
+| Identification | SINDy held-out derivative $R^2$ 0.9946, one-step NRMSE 0.0786, 44 of 156 coefficients; DMDc $R^2$ 0.9926 near hover only |
 | Physics check | Learned coefficients within 2 to 6 % of the simulator's true values |
 | Validation | 0 of 7 SINDy rollouts (11 s) diverged; 3 of 6 poles marginal, as expected for a free rigid body |
 | Control | Inner-loop settling 0.56 to 0.86 s (SINDy model and MuJoCo agree within about 0.3 %); full cascade about 1.87 s, final error 0.0006 m |
 | Voice | 24/24 trials (tolerance 0.15 m), 5/5 chained (max leg error 0.022 m), reversal in 0.42 s, 36 ms processing latency (typed path) |
 | Stopping | From 1.0 m/s to rest in 0.92 s over 0.50 m, matching $v^2/(2a)$ |
-| Robustness | Within 0.15 m up to 2 rad/s gyro noise, 2 N wind and ±20 % mass error |
+| Robustness | Within 0.15 m up to 2 rad/s gyro noise, 2 N wind and $\pm 20$ % mass error |
 | Autonomy | 5/5 development seeds and 29/30 unseen seeds collision-free among moving obstacles |
 
 <table align="center">
@@ -1054,7 +1054,7 @@ Evidence in the repository: [`Drone_pybullet` test output](https://github.com/pr
 | Item | Result |
 |---|---|
 | Recording | `flight_data.csv`: 47,035 rows (re-counted), median step 0.0208 s (about 48 Hz), about 17 minutes |
-| SINDy, attitude (degree 1, λ = 0.2, last 30 % held out) | $\dot\phi = 1.015 p$, $\dot\theta = 0.997 q$, $\dot p = -4.039 \phi$, $\dot q = 0.676 \phi - 2.734 \theta + 0.227 p$; held-out one-step R² 0.964 (roll), 0.974 (pitch), 0.26 (p), 0.27 (q) |
+| SINDy, attitude (degree 1, $\lambda = 0.2$, last 30 % held out) | $\dot\phi = 1.015 p$, $\dot\theta = 0.997 q$, $\dot p = -4.039 \phi$, $\dot q = 0.676 \phi - 2.734 \theta + 0.227 p$; held-out one-step $R^2$ 0.964 (roll), 0.974 (pitch), 0.26 (p), 0.27 (q) |
 | Reading | The kinematic relations (angle rate = body rate) are recovered; the rate equations explain about a quarter of the angular acceleration, because motor commands were not logged and PX4's controller was in the loop |
 | Planner check (offline) | All 35 mission points outside every building on two layouts |
 
@@ -1089,7 +1089,7 @@ The identified models diverge when run forward (Section 9.5). This negative resu
 | Controller | Velocity tracking with acceleration limit | Quaternion law with gains from SINDy, PD outer loop | PX4 (not team code) | Cascaded PD | Cascaded PID |
 | Identification | — | SINDy + DMDc, used for control | SINDy, analysis only | — | SINDy + DMDc, analysis (diverges) |
 | Speech | Google, online | Vosk, restricted grammar | Vosk | Windows, 7-phrase grammar | Vosk |
-| Matching | Whole words, repair ≥ 0.85, amounts | Synonyms + `difflib` ≥ 0.7 | Substring | Exact phrase | Substring |
+| Matching | Whole words, repair $\ge 0.85$, amounts | Synonyms + `difflib` $\ge 0.7$ | Substring | Exact phrase | Substring |
 | Obstacles | Ray cast + braking law, stop or steer | A\* routes, target clipping | Spline missions around boxes | Stop rule | Geofence only |
 | World | Generated city plaza | 1:10 Amrita campus (OSM) | Irchel map, hand-written boxes | 3D city with barriers | Open field with waypoints |
 | Automated tests | 145 pass (re-run) | 166 pass, 1 skipped (re-run) | None | None | 17, cannot pass |
@@ -1162,18 +1162,42 @@ Faculty supervisor: Prof. S. Sunil Kumar.
 
 ## 19. References and acknowledgements
 
-1. S. L. Brunton, J. L. Proctor, J. N. Kutz, "Discovering governing equations from data by sparse identification of nonlinear dynamical systems," *PNAS*, 2016. (SINDy)
-2. J. L. Proctor, S. L. Brunton, J. N. Kutz, "Dynamic mode decomposition with control," *SIAM Journal on Applied Dynamical Systems*, 2016. (DMDc)
-3. E. Fresk, G. Nikolakopoulos, "Full quaternion based attitude control for a quadrotor," *European Control Conference*, 2013.
-4. P. E. Hart, N. J. Nilsson, B. Raphael, "A formal basis for the heuristic determination of minimum cost paths," *IEEE Transactions on Systems Science and Cybernetics*, 1968. (A\*)
-5. C. de Boor, *A Practical Guide to Splines*, 1978. (B-splines)
-6. A. Savitzky, M. J. E. Golay, "Smoothing and differentiation of data by simplified least squares procedures," *Analytical Chemistry*, 1964.
-7. T. L. Kay, J. T. Kajiya, "Ray tracing complex scenes," *SIGGRAPH*, 1986. (slab method)
-8. J. W. Ratcliff, D. E. Metzener, "Pattern matching: the gestalt approach," *Dr. Dobb's Journal*, 1988. (the ratio behind `difflib`)
-9. E. Todorov, T. Erez, Y. Tassa, "MuJoCo: a physics engine for model-based control," *IROS*, 2012.
-10. E. Coumans, Y. Bai, *PyBullet, a Python module for physics simulation for games, robotics and machine learning*, 2016–2021.
-11. Software: PX4 Autopilot, Gazebo, QGroundControl, MAVSDK-Python, Vosk (Alpha Cephei), SpeechRecognition (A. Zhang) with the Google Web Speech API, PySINDy, PyDMD, NumPy, SciPy, pandas, Matplotlib, Pygame, MATLAB.
-12. Data: building footprints and names © OpenStreetMap contributors (ODbL); ground imagery © Esri, Maxar, Earthstar Geographics.
+Papers and books first, then the software and data sources each branch uses. Every DOI and link was checked on 2026-10-24.
+
+1. S. L. Brunton, J. L. Proctor, and J. N. Kutz, "Discovering governing equations from data by sparse identification of nonlinear dynamical systems," *Proc. Natl. Acad. Sci. USA*, vol. 113, no. 15, pp. 3932–3937, 2016. doi: [10.1073/pnas.1517384113](https://doi.org/10.1073/pnas.1517384113)
+2. J. L. Proctor, S. L. Brunton, and J. N. Kutz, "Dynamic mode decomposition with control," *SIAM J. Appl. Dyn. Syst.*, vol. 15, no. 1, pp. 142–161, 2016. doi: [10.1137/15M1013857](https://doi.org/10.1137/15M1013857)
+3. B. M. de Silva, K. Champion, M. Quade, J.-C. Loiseau, J. N. Kutz, and S. L. Brunton, "PySINDy: A Python package for the sparse identification of nonlinear dynamical systems from data," *J. Open Source Softw.*, vol. 5, no. 49, p. 2104, 2020. doi: [10.21105/joss.02104](https://doi.org/10.21105/joss.02104)
+4. A. A. Kaptanoglu *et al.*, "PySINDy: A comprehensive Python package for robust sparse system identification," *J. Open Source Softw.*, vol. 7, no. 69, p. 3994, 2022. doi: [10.21105/joss.03994](https://doi.org/10.21105/joss.03994)
+5. N. Demo, M. Tezzele, and G. Rozza, "PyDMD: Python Dynamic Mode Decomposition," *J. Open Source Softw.*, vol. 3, no. 22, p. 530, 2018. doi: [10.21105/joss.00530](https://doi.org/10.21105/joss.00530)
+6. A. Savitzky and M. J. E. Golay, "Smoothing and differentiation of data by simplified least squares procedures," *Anal. Chem.*, vol. 36, no. 8, pp. 1627–1639, 1964. doi: [10.1021/ac60214a047](https://doi.org/10.1021/ac60214a047)
+7. E. Fresk and G. Nikolakopoulos, "Full quaternion based attitude control for a quadrotor," in *Proc. European Control Conf. (ECC)*, Zürich, 2013, pp. 3864–3869. doi: [10.23919/ECC.2013.6669617](https://doi.org/10.23919/ECC.2013.6669617)
+8. R. Mahony, V. Kumar, and P. Corke, "Multirotor aerial vehicles: Modeling, estimation, and control of quadrotor," *IEEE Robot. Autom. Mag.*, vol. 19, no. 3, pp. 20–32, 2012. doi: [10.1109/MRA.2012.2206474](https://doi.org/10.1109/MRA.2012.2206474)
+9. K. J. Åström and T. Hägglund, *PID Controllers: Theory, Design, and Tuning*, 2nd ed. Research Triangle Park, NC, USA: Instrument Society of America, 1995.
+10. P. E. Hart, N. J. Nilsson, and B. Raphael, "A formal basis for the heuristic determination of minimum cost paths," *IEEE Trans. Syst. Sci. Cybern.*, vol. 4, no. 2, pp. 100–107, 1968. doi: [10.1109/TSSC.1968.300136](https://doi.org/10.1109/TSSC.1968.300136)
+11. C. de Boor, *A Practical Guide to Splines*. New York, NY, USA: Springer-Verlag, 1978.
+12. T. L. Kay and J. T. Kajiya, "Ray tracing complex scenes," *ACM SIGGRAPH Comput. Graph.*, vol. 20, no. 4, pp. 269–278, 1986. doi: [10.1145/15886.15916](https://doi.org/10.1145/15886.15916)
+13. J. W. Ratcliff and D. E. Metzener, "Pattern matching: The gestalt approach," *Dr. Dobb's Journal*, vol. 13, no. 7, p. 46, Jul. 1988. (The similarity ratio used by Python's `difflib`.)
+14. E. Todorov, T. Erez, and Y. Tassa, "MuJoCo: A physics engine for model-based control," in *Proc. IEEE/RSJ Int. Conf. Intelligent Robots and Systems (IROS)*, 2012, pp. 5026–5033. doi: [10.1109/IROS.2012.6386109](https://doi.org/10.1109/IROS.2012.6386109)
+15. E. Coumans and Y. Bai, "PyBullet, a Python module for physics simulation for games, robotics and machine learning," 2016–2021. [Online]. Available: <https://pybullet.org>
+16. L. Meier, D. Honegger, and M. Pollefeys, "PX4: A node-based multithreaded open source robotics framework for deeply embedded platforms," in *Proc. IEEE Int. Conf. Robotics and Automation (ICRA)*, 2015, pp. 6235–6240. doi: [10.1109/ICRA.2015.7140074](https://doi.org/10.1109/ICRA.2015.7140074)
+17. N. Koenig and A. Howard, "Design and use paradigms for Gazebo, an open-source multi-robot simulator," in *Proc. IEEE/RSJ Int. Conf. Intelligent Robots and Systems (IROS)*, 2004, vol. 3, pp. 2149–2154. doi: [10.1109/IROS.2004.1389727](https://doi.org/10.1109/IROS.2004.1389727)
+18. A. Koubâa, A. Allouch, M. Alajlan, Y. Javed, A. Belghith, and M. Khalgui, "Micro Air Vehicle Link (MAVLink) in a nutshell: A survey," *IEEE Access*, vol. 7, pp. 87658–87680, 2019. doi: [10.1109/ACCESS.2019.2924410](https://doi.org/10.1109/ACCESS.2019.2924410)
+19. MAVSDK project, "MAVSDK documentation (Python)." [Online]. Available: <https://mavsdk.mavlink.io>
+20. Dronecode, "QGroundControl user guide." [Online]. Available: <https://docs.qgroundcontrol.com>
+21. PX4 Autopilot, "PX4 user and developer guide: Gazebo simulation." [Online]. Available: <https://docs.px4.io/main/en/sim_gazebo_gz/>
+22. D. Povey *et al.*, "The Kaldi speech recognition toolkit," in *Proc. IEEE Workshop on Automatic Speech Recognition and Understanding (ASRU)*, Hawaii, USA, 2011.
+23. Alpha Cephei, "Vosk offline speech recognition toolkit" (model `vosk-model-small-en-us-0.15`). [Online]. Available: <https://alphacephei.com/vosk/>
+24. A. Zhang, "SpeechRecognition: Library for performing speech recognition, with support for several engines and APIs" (Python package). [Online]. Available: <https://github.com/Uberi/speech_recognition>
+25. Microsoft, "System.Speech.Recognition namespace," .NET API documentation. [Online]. Available: <https://learn.microsoft.com/dotnet/api/system.speech.recognition>
+26. The MathWorks, Inc., "MATLAB documentation." [Online]. Available: <https://www.mathworks.com/help/matlab/>
+27. C. R. Harris *et al.*, "Array programming with NumPy," *Nature*, vol. 585, pp. 357–362, 2020. doi: [10.1038/s41586-020-2649-2](https://doi.org/10.1038/s41586-020-2649-2)
+28. P. Virtanen *et al.*, "SciPy 1.0: Fundamental algorithms for scientific computing in Python," *Nat. Methods*, vol. 17, pp. 261–272, 2020. doi: [10.1038/s41592-019-0686-2](https://doi.org/10.1038/s41592-019-0686-2)
+29. W. McKinney, "Data structures for statistical computing in Python," in *Proc. 9th Python in Science Conf. (SciPy)*, 2010, pp. 56–61. doi: [10.25080/Majora-92bf1922-00a](https://doi.org/10.25080/Majora-92bf1922-00a)
+30. J. D. Hunter, "Matplotlib: A 2D graphics environment," *Comput. Sci. Eng.*, vol. 9, no. 3, pp. 90–95, 2007. doi: [10.1109/MCSE.2007.55](https://doi.org/10.1109/MCSE.2007.55)
+31. Pygame community, "Pygame (pygame-ce) documentation." [Online]. Available: <https://pyga.me/docs/>
+32. M. Haklay and P. Weber, "OpenStreetMap: User-generated street maps," *IEEE Pervasive Comput.*, vol. 7, no. 4, pp. 12–18, 2008. doi: [10.1109/MPRV.2008.80](https://doi.org/10.1109/MPRV.2008.80)
+33. Map data © OpenStreetMap contributors, available under the Open Database License (ODbL). [Online]. Available: <https://www.openstreetmap.org/copyright>
+34. Esri, "World Imagery" basemap. Imagery © Esri, Maxar, Earthstar Geographics. [Online]. Available: <https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9>
 
 The `drone_gazebo` README states that parts of its code and debugging were developed with help from AI assistants.
 
