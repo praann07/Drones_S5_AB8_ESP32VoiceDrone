@@ -10,6 +10,14 @@ A MATLAB-based drone flight simulation with seven flight commands, a separate vo
 - `OBSTACLE_STOP_FIX.txt` — obstacle-stop notes supplied with the project.
 - `outputs/` — six supplied output-graph screenshots.
 
+## Requirements and installation
+
+- MATLAB R2019b or newer (`tiledlayout` in the analysis figure); only core MATLAB functions are used.
+- Windows 10 or 11 with an English speech language installed (*Settings → Time & language → Speech*) for voice input; Windows PowerShell 5.1 runs `listen_voice.ps1`.
+- A microphone allowed for desktop apps. The buttons work without one.
+
+The full write-up, with the equations of the model, is in the [branch README](../README.md).
+
 ## Flight commands
 
 | Command | Purpose |
@@ -87,3 +95,9 @@ Ensure the returned path points to the extracted project folder.
 ## Safety
 
 This project is for simulation and educational use. Do not interpret the obstacle-stop behavior as proof of safe operation on physical drone hardware.
+
+## References
+
+1. The MathWorks, Inc., "MATLAB documentation." [Online]. Available: <https://www.mathworks.com/help/matlab/>
+2. Microsoft, "System.Speech.Recognition namespace," .NET API documentation. [Online]. Available: <https://learn.microsoft.com/dotnet/api/system.speech.recognition>
+3. R. Mahony, V. Kumar, and P. Corke, "Multirotor aerial vehicles: Modeling, estimation, and control of quadrotor," *IEEE Robot. Autom. Mag.*, vol. 19, no. 3, pp. 20–32, 2012. doi: [10.1109/MRA.2012.2206474](https://doi.org/10.1109/MRA.2012.2206474)
