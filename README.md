@@ -602,7 +602,7 @@ flowchart TD
     STOP --> LOG
 ```
 
-- **Model:** a simplified quadrotor, not a rotor-thrust simulation. The position loop commands an acceleration, $a_{cmd,xy} = 1.55 e_{xy} - 1.75 v_{xy}$ and $a_{cmd,z} = 2.35 e_z - 2.0 v_z$, limited by the tilt limit. The commanded tilt is $\theta_{cmd} = -\operatorname{atan2}(a_x, g)$, $\phi_{cmd} = \operatorname{atan2}(a_y, g)$; the attitude follows with a rate limit (75°/s in roll and pitch, 100°/s in yaw). The horizontal acceleration then comes from the actual tilt, $a_x = -g\tan\theta$, $a_y = g\tan\phi$, plus wind and a quadratic drag term $-0.055 v\lvert v\rvert$.
+- **Model:** a simplified quadrotor, not a rotor-thrust simulation. The position loop commands an acceleration, $a_{cmd,xy} = 1.55 e_{xy} - 1.75 v_{xy}$ and $a_{cmd,z} = 2.35 e_z - 2.0 v_z$, limited by the tilt limit. The commanded tilt is $\theta_{cmd} = -\mathrm{atan2}(a_x, g)$, $\phi_{cmd} = \mathrm{atan2}(a_y, g)$; the attitude follows with a rate limit (75°/s in roll and pitch, 100°/s in yaw). The horizontal acceleration then comes from the actual tilt, $a_x = -g\tan\theta$, $a_y = g\tan\phi$, plus wind and a quadratic drag term $-0.055 v\lvert v\rvert$.
 - **Obstacle rule:** for each step, the closest point of the segment from the current to the next position is found; if it comes within the safety radius (obstacle radius + 1.65 m) of a barrier, or of a building's bounding circle, the step is refused. Movement that increases the distance from an obstacle is always allowed.
 - **Motor bars** are a visual proxy for control effort, computed from the commands; they are not a motor model.
 
@@ -620,7 +620,7 @@ flowchart TD
 | Algorithm | Equation or rule | Details |
 |---|---|---|
 | Cascaded PD to acceleration | $a_{cmd} = K_p e - K_d v$, clipped to $g\tan\theta_{max}$ | [10.8](#108-cascaded-control) |
-| Tilt and acceleration | $\theta_{cmd} = -\operatorname{atan2}(a_x, g)$; $a_x = -g\tan\theta$ | [10.3](#103-flight-models) |
+| Tilt and acceleration | $\theta_{cmd} = -\mathrm{atan2}(a_x, g)$; $a_x = -g\tan\theta$ | [10.3](#103-flight-models) |
 | Segment-to-circle stop | closest point $p + \tau s$, $\tau = \mathrm{clip}\left(\dfrac{(c - p)\cdot s}{s\cdot s}, 0, 1\right)$; stop if within $r + 1.65$ m | [10.4](#104-obstacle-detection-and-braking) |
 | Tracking error | $e_{3D} = \lVert p_{target} - p\rVert$, $\ \mathrm{RMSE} = \sqrt{\tfrac{1}{N}\sum e_{3D}^2}$ | [Section 14](#14-results-and-demonstrations) |
 
