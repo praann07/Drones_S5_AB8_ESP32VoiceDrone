@@ -349,7 +349,7 @@ The simulation presents a three-dimensional, city-like environment containing bu
 
 ![The flight lab during the obstacle stop at the East barrier](DroneFlightLab_MATLAB/outputs/app_obstacle_stop.png)
 
-*The app at $t = 10$ s of the flight in Section 3. The drone holds 6.4 m up, 2.04 m west of the East barrier, and the telemetry panel reports `OBSTACLE STOP: EAST BARRIER`. For this capture the 3D camera was turned to azimuth $-12^\circ$, elevation $14^\circ$. The app opens at $48^\circ$, $24^\circ$, where the hovering drone appears in front of the North barrier.*
+**The app during the obstacle stop.** The app at $t = 10$ s of the flight in Section 3. The drone holds 6.4 m up, 2.04 m west of the East barrier, and the telemetry panel reports `OBSTACLE STOP: EAST BARRIER`. For this capture the 3D camera was turned to azimuth $-12^\circ$, elevation $14^\circ$. The app opens at $48^\circ$, $24^\circ$, where the hovering drone appears in front of the North barrier.
 
 The environment and safety check should use consistent coordinates. A visual building and a numerical obstacle region are not necessarily the same thing unless both are configured and checked by the simulation code.
 
@@ -370,7 +370,7 @@ This project description covers the first behaviour. It should not be described 
 
 ![Ground track of the flight in Section 3](DroneFlightLab_MATLAB/outputs/flight_ground_track.png)
 
-*Top view of the same flight. Each barrier is a disc of radius $r$ (0.34 m, or 0.42 m for NORTHEAST) with a safety boundary at $r + 1.65$ m. The drone stopped when its next step would have entered the East barrier's boundary, 2.04 m from the barrier centre. Buildings are checked the same way with a bounding circle (Section 3.7). The barriers are 2.2 m and 2.8 m tall, but the check is horizontal, so the drone also stops when it flies above them.*
+**Ground track.** Top view of the same flight. Each barrier is a disc of radius $r$ (0.34 m, or 0.42 m for NORTHEAST) with a safety boundary at $r + 1.65$ m. The drone stopped when its next step would have entered the East barrier's boundary, 2.04 m from the barrier centre. Buildings are checked the same way with a bounding circle (Section 3.7). The barriers are 2.2 m and 2.8 m tall, but the check is horizontal, so the drone also stops when it flies above them.
 
 ### 6. What is and is not claimed
 
