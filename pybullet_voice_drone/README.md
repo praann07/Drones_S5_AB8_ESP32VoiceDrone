@@ -17,7 +17,7 @@ An interactive 3D quadcopter simulation built with **PyBullet** and **SpeechReco
 - **Cameras & overlays** – press `C` (or say *"camera"*) to cycle four cameras: **follow** (keeps whatever angle and zoom you set with the mouse), **chase** (behind the drone, turning with it), **top** (straight down, like a mission map) and **fixed**. Labels attached to the drone show its state (red = held at an obstacle, cyan = taking off/landing, green = hovering, yellow = moving), position/speed/heading, the distance to the nearest obstacle and the last phrase heard; `[` and `]` resize them. A marker on the floor under the drone, joined to it by a thin line, shows its height; a sensor ray shows what is ahead (green clear → red close); a flight trail coloured by speed fades behind it (`P`); `Z` draws each obstacle's safety zone.
 - **Smooth** – in the full city on integrated Intel graphics the simulation loop spends about 3 ms of its 8 ms budget per frame. Every call into the window was measured, and the expensive ones (rewriting text, changing colours) are rationed: see the note in `Hud`.
 - **One-piece drone model** – `drone.urdf` loads as a single multibody with four counter-rotating propellers, so the whole drone moves in the same instant (no glitching parts).
-- **Live graphs** – when the simulation starts, your browser opens a dashboard that follows the flight as it happens: altitude, speed, the distance to the nearest obstacle, position, a top-down map with the flight trail, and a timeline of every command (accepted, refused or not recognised). See [Live graphs](#-live-graphs).
+- **Live graphs** – when the simulation starts, your browser opens a dashboard that follows the flight as it happens: altitude, speed, the distance to the nearest obstacle, position, a top-down map with the flight trail, and a timeline of every command (accepted, refused or not recognised). See [Live graphs](#live-graphs).
 - **Telemetry** – every command and one sample per second while airborne are appended to `drone_data.csv`.
 
 > The motion model is kinematic (commanded velocities, not simulated rotor thrust). PyBullet provides the 3D world, rendering and camera.
@@ -210,7 +210,7 @@ Keys can be combined (e.g. `W`+`D` flies diagonally).
 Every frame the drone casts a ray along its commanded direction of travel (so it works for *backward*, *left/right* and *down* too) and tests it against each obstacle grown by the drone's footprint (propeller-tip radius 1.32 m, plus the skids' height) and a 0.25 m **safety distance** – the *safety zone*, drawn with `Z`. It looks up to `DETECTION_DISTANCE = 2 m` ahead.
 
 **`--on-obstacle stop` (default)**
-1. **Brake** – the drone keeps its speed until it is close enough that a gentle 2 m/s² deceleration can still stop it, then slows smoothly.
+1. **Brake** – the drone keeps its speed until it is close enough that a gentle $2\ \mathrm{m/s^2}$ deceleration can still stop it, then slows smoothly.
 2. **Hold** – it halts `STOP_BUFFER = 0.4 m` in front of the zone and stays there. Its command is dropped, so it cannot take off again on its own (for example when you turn it to face clear space).
 3. **Say what happened** – the status label turns red, the blocking tower's halo pulses, the rear lights flash, and a measured move or *"go home"* ends with *STOPPED - OBSTACLE AHEAD*.
 4. **Move on** – any direction that is clear works at once; moving away from the obstacle always works, even from inside the zone.
@@ -294,6 +294,20 @@ git add pybullet_voice_drone
 git commit -m "Describe the change"
 git push origin HEAD:refs/heads/Drone_pybullet
 ```
+
+---
+
+## References
+
+The full project report, with the mathematics, is in the [branch README](../README.md#22-references).
+
+1. E. Coumans and Y. Bai, "PyBullet, a Python module for physics simulation for games, robotics and machine learning," 2016–2021. [Online]. Available: <https://pybullet.org>
+2. A. Zhang, "SpeechRecognition: Library for performing speech recognition, with support for several engines and APIs" (Python package). [Online]. Available: <https://github.com/Uberi/speech_recognition>
+3. Google, Web Speech API speech-to-text service, accessed through `SpeechRecognition.Recognizer.recognize_google` (language `en-IN`, up to three ranked alternatives).
+4. J. W. Ratcliff and D. E. Metzener, "Pattern matching: The gestalt approach," *Dr. Dobb's Journal*, vol. 13, no. 7, p. 46, Jul. 1988. (The similarity ratio used by Python's `difflib`.)
+5. T. L. Kay and J. T. Kajiya, "Ray tracing complex scenes," *ACM SIGGRAPH Comput. Graph.*, vol. 20, no. 4, pp. 269–278, 1986. doi: [10.1145/15886.15916](https://doi.org/10.1145/15886.15916)
+6. Open Robotics, "URDF XML specification," ROS Wiki. [Online]. Available: <https://wiki.ros.org/urdf/XML>
+7. Python Software Foundation, "http.server: HTTP servers," Python 3 standard library documentation. [Online]. Available: <https://docs.python.org/3/library/http.server.html>
 
 ---
 

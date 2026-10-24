@@ -144,7 +144,9 @@ microphone → speech service → up to 3 ranked guesses → first guess that is
 3. **Split words are joined.** Recognisers often split one word in two, so pairs such as *"for word"*, *"four ward"* and *"back word"* become *forward* and *backward*.
 4. **One-letter slips are repaired.** A word of five or more letters is replaced by the closest command word if their similarity ratio is at least 0.85:
 
-$$\text{ratio}(a,b) = \frac{2\,M}{|a| + |b|}$$
+```math
+\text{ratio}(a,b) = \frac{2\,M}{|a| + |b|}
+```
 
 where $M$ is the number of matching characters. *"forwad"* (ratio 0.92) becomes *forward*, while *"island"* (ratio 0.62 to *landing*) is left alone.
 
@@ -160,11 +162,15 @@ where $M$ is the number of matching characters. *"forwad"* (ratio 0.92) becomes 
 
 A command sets a *target* body-frame velocity. The drone's actual world-frame velocity follows that target with a limited acceleration $a = 3\ \mathrm{m/s^2}$:
 
-$$\begin{bmatrix} v_x \\ v_y \end{bmatrix}_{cmd} = \begin{bmatrix} \cos\psi & -\sin\psi \\ \sin\psi & \cos\psi \end{bmatrix} \begin{bmatrix} v_{fwd} \\ v_{left} \end{bmatrix}$$
+```math
+\begin{bmatrix} v_x \\ v_y \end{bmatrix}_{cmd} = \begin{bmatrix} \cos\psi & -\sin\psi \\ \sin\psi & \cos\psi \end{bmatrix} \begin{bmatrix} v_{fwd} \\ v_{left} \end{bmatrix}
+```
 
-$$v \leftarrow v + \mathrm{clip}\big(v_{cmd} - v,\ -a\,\Delta t,\ a\,\Delta t\big), \qquad x \leftarrow x + v\,\Delta t$$
+```math
+v \leftarrow v + \mathrm{clip}\big(v_{cmd} - v,\ -a\,\Delta t,\ a\,\Delta t\big), \qquad x \leftarrow x + v\,\Delta t
+```
 
-The heading $\psi$ follows the commanded yaw rate with a yaw-acceleration limit of 180°/s². Position is clamped to a ±12 m geofence and 0.5 – 8 m altitude.
+The heading $\psi$ follows the commanded yaw rate with a yaw-acceleration limit of $180^\circ/\mathrm{s}^2$. Position is clamped to a $\pm 12$ m geofence and 0.5 – 8 m altitude.
 
 > **📘 What this means:**
 > "Forward" always means the way the red nose points, whatever the heading. The drone never jumps to a new speed; it speeds up and slows down smoothly, which also makes stopping distances predictable.
@@ -188,9 +194,11 @@ A manual command during take-off or landing cancels the automatic manoeuvre and 
 
 *"Forward 3 meters"*, *"rotate left 90 degrees"* and *"go home"* are *manoeuvres*. The speed (or turn rate) shrinks as the goal gets close, so the drone arrives smoothly:
 
-$$v = \mathrm{clip}\big(2\,d_{remaining},\ 0.15,\ v_{max}\big), \qquad \omega = \mathrm{clip}\big(2\,\theta_{remaining},\ 0.15,\ \omega_{max}\big)$$
+```math
+v = \mathrm{clip}\big(2\,d_{remaining},\ 0.15,\ v_{max}\big), \qquad \omega = \mathrm{clip}\big(2\,\theta_{remaining},\ 0.15,\ \omega_{max}\big)
+```
 
-Return home uses $v = \mathrm{clip}(1.5\,d,\ 0.15,\ 1.5)$ towards the pad and then lands. A manoeuvre ends when it completes, when it is cancelled (*stop*, or any new command), when the drone is pinned (speed below 0.05 m/s for 1.5 s, for example against the geofence), when an obstacle stops it, or after a timeout of $3d/v + 10$ s.
+Return home uses $v = \mathrm{clip}(1.5 d,\ 0.15,\ 1.5)$ towards the pad and then lands. A manoeuvre ends when it completes, when it is cancelled (*stop*, or any new command), when the drone is pinned (speed below 0.05 m/s for 1.5 s, for example against the geofence), when an obstacle stops it, or after a timeout of $3d/v + 10$ s.
 
 ---
 
@@ -200,7 +208,9 @@ Return home uses $v = \mathrm{clip}(1.5\,d,\ 0.15,\ 1.5)$ towards the pad and th
 
 **Stopping (default).** The drone keeps its speed until it is close enough that a gentle deceleration $a_b = 2\ \mathrm{m/s^2}$ can still stop it, and then slows to halt a fixed distance $d_{stop} = 0.4$ m before the zone:
 
-$$v_{allowed} = \sqrt{2\,a_b\,\max(t_{hit} - d_{stop},\ 0)}$$
+```math
+v_{allowed} = \sqrt{2\,a_b\,\max(t_{hit} - d_{stop},\ 0)}
+```
 
 Once held, its command is dropped so it cannot set off again by itself (for example when it is turned to face open space). Any direction that is clear works immediately, and moving away from the obstacle always works.
 
@@ -218,7 +228,7 @@ Once held, its command is dropped so it cannot set off again by itself (for exam
 | Part | How it is made |
 |---|---|
 | Ground layers | Grass, ring road, sidewalks and plaza are flat textured quads, each 1 cm above the one below to avoid flicker |
-| Textures | Generated in pure Python and tiled every 2 m; building facades repeat a 2.5 m × 3.2 m window bay |
+| Textures | Generated in pure Python and tiled every 2 m; building facades repeat a $2.5\ \mathrm{m} \times 3.2\ \mathrm{m}$ window bay |
 | Buildings | Textured walls plus roofs and rooftop details; **taller on the side away from the sun**, so no building casts a shadow on the plaza |
 | Traffic | 9 cars on two rounded-square lanes (opposite directions) and 10 pedestrians on the sidewalk, moved along the same path function |
 | Obstacles | Kiosk towers whose collision boxes are exactly the boxes the obstacle logic uses, with a red halo that grows as the drone nears |
@@ -302,7 +312,7 @@ Measured by running the controller headless at 60 steps per second.
 | Take-off | *take off* | Reaches 2.000 m in **2.78 s** |
 | Measured move | *forward 3 meters* | Done in 3.25 s; **1.6 cm** along-track error, 0 lateral error |
 | Measured turn | *rotate left 90 degrees* | Done in 2.9 s; **0.13°** heading error |
-| Stop before an obstacle | *forward* towards the first tower | Halts at x = 0.83 m, **0.40 m** from the safety zone (the designed stop distance); peak deceleration 3.0 m/s², equal to the acceleration limit; the hard safety net was never needed |
+| Stop before an obstacle | *forward* towards the first tower | Halts at $x = 0.83$ m, **0.40 m** from the safety zone (the designed stop distance); peak deceleration $3.0\ \mathrm{m/s^2}$, equal to the acceleration limit; the hard safety net was never needed |
 | Steer around obstacles | *forward* through all three towers (`steer`) | Reaches the far wall in 9.8 s; closest approach to any safety zone **0.70 m**; safety net never needed |
 | Return home, open space | *go home* from 9.4 m away | Lands in 10.1 s, **9.6 cm** from the pad centre |
 | Return home, through the towers (`steer`) | *go home* from the far wall, 13.0 m away | Lands in 13.1 s, **9.5 cm** from the pad centre |
@@ -337,14 +347,14 @@ This measures the Python loop, not the GPU's own frame rate, which depends on th
 |---|---:|---|
 | Horizontal / vertical speed | 1.5 / 1.0 m/s | Cruise speeds |
 | Turn rate | 45 °/s | Yaw rate |
-| Acceleration | 3 m/s² | How fast velocity follows the command |
+| Acceleration | $3\ \mathrm{m/s^2}$ | How fast velocity follows the command |
 | Take-off height | 2.0 m | Cruise altitude after *take off* |
 | Minimum flight height | 0.5 m | *down* stops here; *land* goes lower |
-| Maximum height / geofence | 8 m / ±12 m | World limits |
+| Maximum height / geofence | 8 m / $\pm 12$ m | World limits |
 | Drone footprint radius | 1.32 m | Propeller tip to centre |
 | Safety distance | 0.25 m | Added around every obstacle |
 | Detection distance | 2.0 m | How far ahead the ray looks |
-| Stop distance / braking | 0.4 m / 2 m/s² | Where the drone halts, and how gently |
+| Stop distance / braking | 0.4 m / $2\ \mathrm{m/s^2}$ | Where the drone halts, and how gently |
 | Speech guesses considered | 3 | Top Google alternatives |
 | Spelling-repair similarity | 0.85 | Minimum ratio, words of 5+ letters |
 
@@ -662,9 +672,17 @@ The project shows that a voice interface for a drone depends as much on forgivin
 
 ## 22. References
 
-1. E. Coumans and Y. Bai, *PyBullet, a Python module for physics simulation for games, robotics and machine learning*, http://pybullet.org, 2016 – 2021.
-2. A. Zhang, *SpeechRecognition* (Python library), https://github.com/Uberi/speech_recognition.
-3. Google Web Speech API, used through the SpeechRecognition library for speech-to-text.
+Every link was checked on 2026-10-24.
+
+1. E. Coumans and Y. Bai, "PyBullet, a Python module for physics simulation for games, robotics and machine learning," 2016–2021. [Online]. Available: <https://pybullet.org>
+2. A. Zhang, "SpeechRecognition: Library for performing speech recognition, with support for several engines and APIs" (Python package). [Online]. Available: <https://github.com/Uberi/speech_recognition>
+3. Google, Web Speech API speech-to-text service, accessed through `SpeechRecognition.Recognizer.recognize_google` (language `en-IN`, up to three ranked alternatives).
+4. J. W. Ratcliff and D. E. Metzener, "Pattern matching: The gestalt approach," *Dr. Dobb's Journal*, vol. 13, no. 7, p. 46, Jul. 1988. (The similarity ratio used by Python's `difflib`.)
+5. Python Software Foundation, "difflib: Helpers for computing deltas," Python 3 standard library documentation. [Online]. Available: <https://docs.python.org/3/library/difflib.html>
+6. T. L. Kay and J. T. Kajiya, "Ray tracing complex scenes," *ACM SIGGRAPH Comput. Graph.*, vol. 20, no. 4, pp. 269–278, 1986. doi: [10.1145/15886.15916](https://doi.org/10.1145/15886.15916)
+7. R. Mahony, V. Kumar, and P. Corke, "Multirotor aerial vehicles: Modeling, estimation, and control of quadrotor," *IEEE Robot. Autom. Mag.*, vol. 19, no. 3, pp. 20–32, 2012. doi: [10.1109/MRA.2012.2206474](https://doi.org/10.1109/MRA.2012.2206474)
+8. Open Robotics, "URDF XML specification," ROS Wiki. [Online]. Available: <https://wiki.ros.org/urdf/XML>
+9. Python Software Foundation, "http.server: HTTP servers," Python 3 standard library documentation. [Online]. Available: <https://docs.python.org/3/library/http.server.html>
 
 ---
 
